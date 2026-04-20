@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sokrio Meeting Minutes</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <!-- ===== Sidebar ===== -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo-block">
+            <!-- Sokrio Symbol — White Reversed -->
+            <svg class="logo-symbol" viewBox="86 -4 128 188" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <g opacity=".85">
+                <path d="M189.6 46.8149L116.1 120.003L92.88 96.8739C90.39 94.394 89.42 90.784 90.33 87.4041L107.33 24.2153C108.24 20.8354 110.89 18.1854 114.29 17.2855L177.76 0.335795C181.16 -0.574188 184.78 0.395793 187.27 2.87574L189.61 5.2057C201.15 16.6955 201.15 35.3251 189.61 46.8149H189.6Z" fill="white"/>
+                <path d="M128.72 13.4255L114.3 17.2755C110.9 18.1854 108.25 20.8254 107.34 24.2053L90.34 87.3941C89.43 90.774 90.4 94.394 92.89 96.8639L116.12 119.993C116.38 119.733 116.64 119.483 116.89 119.223L117.11 119.013C158.71 77.0643 175.74 26.8753 155.16 6.37568L128.73 13.4255H128.72Z" fill="white"/>
+                <path d="M128.72 13.4255C154.61 39.205 149.26 86.3341 116.88 119.233C116.63 119.493 116.37 119.753 116.11 120.003L92.88 96.8739C90.39 94.394 89.42 90.784 90.33 87.4041L107.33 24.2153C108.24 20.8354 110.89 18.1854 114.29 17.2855L128.71 13.4355L128.72 13.4255Z" fill="white"/>
+              </g>
+              <g opacity=".55">
+                <path d="M110.39 133.193L183.89 60.0046L207.11 83.1342C209.6 85.6141 210.57 89.2241 209.66 92.604L192.66 155.793C191.75 159.173 189.1 161.823 185.7 162.723L122.25 179.652C118.85 180.562 115.23 179.592 112.74 177.112L110.4 174.782C98.86 163.293 98.86 144.663 110.4 133.173L110.39 133.193Z" fill="white"/>
+                <path d="M171.28 166.583L185.7 162.733C189.1 161.823 191.75 159.183 192.66 155.803L209.66 92.614C210.57 89.2341 209.6 85.6141 207.11 83.1442L183.88 60.0146C183.62 60.2746 183.36 60.5246 183.11 60.7846L182.89 60.9946C141.29 102.944 124.26 153.133 144.84 173.632L171.27 166.583H171.28Z" fill="white"/>
+                <path d="M171.28 166.583C145.39 140.803 150.74 93.674 183.12 60.7746C183.37 60.5146 183.63 60.2546 183.89 60.0046L207.12 83.1342C209.61 85.6141 210.58 89.2241 209.67 92.604L192.67 155.793C191.76 159.173 189.11 161.823 185.71 162.723L171.29 166.573L171.28 166.583Z" fill="white"/>
+              </g>
+            </svg>
+            <!-- Sokrio Wordmark — White Reversed -->
+            <svg class="logo-wordmark-svg" viewBox="-2 248 304 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8.93 298.56C5.27 297.6 2.29 296.32 0 294.71L4.46 284.68C6.61 286.1 9.11 287.25 11.95 288.11C14.79 288.98 17.58 289.42 20.33 289.42C25.55 289.42 28.16 288.11 28.16 285.51C28.16 284.14 27.41 283.12 25.93 282.45C24.44 281.79 22.05 281.09 18.75 280.36C15.13 279.58 12.11 278.75 9.68 277.85C7.25 276.96 5.17 275.53 3.43 273.561C1.69 271.591 0.82 268.941 0.82 265.591C0.82 262.661 1.62 260.021 3.22 257.661C4.82 255.301 7.21 253.441 10.4 252.061C13.58 250.691 17.49 250.001 22.11 250.001C25.27 250.001 28.38 250.361 31.45 251.061C34.52 251.771 37.22 252.811 39.55 254.181L35.36 264.281C30.78 261.811 26.34 260.571 22.04 260.571C19.34 260.571 17.37 260.971 16.13 261.771C14.89 262.571 14.28 263.611 14.28 264.901C14.28 266.191 15.01 267.141 16.48 267.781C17.94 268.421 20.3 269.091 23.55 269.771C27.21 270.551 30.25 271.381 32.65 272.281C35.05 273.171 37.14 274.591 38.9 276.54C40.66 278.49 41.54 281.13 41.54 284.47C41.54 287.35 40.74 289.96 39.14 292.3C37.54 294.63 35.13 296.5 31.93 297.9C28.72 299.3 24.83 300 20.25 300C16.36 300 12.58 299.52 8.92 298.56H8.93Z" fill="white"/>
+              <path d="M61.68 296.77C57.63 294.62 54.44 291.64 52.13 287.84C49.82 284.04 48.66 279.76 48.66 275C48.66 270.241 49.82 265.961 52.13 262.161C54.44 258.361 57.62 255.381 61.68 253.231C65.73 251.081 70.3 250.001 75.38 250.001C80.46 250.001 85.03 251.081 89.08 253.231C93.13 255.381 96.31 258.361 98.63 262.161C100.94 265.961 102.1 270.241 102.1 275C102.1 279.76 100.94 284.04 98.63 287.84C96.32 291.64 93.14 294.62 89.08 296.77C85.03 298.92 80.46 300 75.38 300C70.3 300 65.73 298.92 61.68 296.77ZM81.97 287.02C83.94 285.88 85.5 284.26 86.64 282.18C87.78 280.1 88.36 277.71 88.36 275C88.36 272.291 87.79 269.911 86.64 267.821C85.49 265.741 83.94 264.121 81.97 262.981C80 261.841 77.8 261.261 75.38 261.261C72.96 261.261 70.75 261.831 68.79 262.981C66.82 264.131 65.26 265.741 64.12 267.821C62.98 269.901 62.4 272.301 62.4 275C62.4 277.7 62.97 280.09 64.12 282.18C65.26 284.26 66.82 285.88 68.79 287.02C70.76 288.17 72.96 288.74 75.38 288.74C77.8 288.74 80 288.17 81.97 287.02Z" fill="white"/>
+              <path d="M129.67 281.59L124.59 287.02V299.04H111.13V250.961H124.59V270.951L143.2 250.961H158.17L138.53 272.251L159.2 299.04H143.4L129.66 281.59H129.67Z" fill="white"/>
+              <path d="M189.06 286.26H181.64V299.03H168.04V250.951H190.02C194.37 250.951 198.15 251.671 201.35 253.111C204.55 254.551 207.03 256.611 208.77 259.291C210.51 261.971 211.38 265.121 211.38 268.731C211.38 272.341 210.57 275.24 208.94 277.83C207.31 280.42 204.99 282.44 201.97 283.91L212.34 299.02H197.78L189.06 286.25V286.26ZM195.51 263.531C194.09 262.291 191.98 261.681 189.19 261.681H181.64V275.76H189.19C191.98 275.76 194.09 275.15 195.51 273.94C196.93 272.731 197.64 271.001 197.64 268.751C197.64 266.501 196.93 264.771 195.51 263.531Z" fill="white"/>
+              <path d="M222.93 250.961H236.53V299.04H222.93V250.961Z" fill="white"/>
+              <path d="M259.58 296.77C255.53 294.62 252.34 291.64 250.03 287.84C247.72 284.04 246.56 279.76 246.56 275C246.56 270.241 247.72 265.961 250.03 262.161C252.34 258.361 255.52 255.381 259.58 253.231C263.63 251.081 268.2 250.001 273.28 250.001C278.36 250.001 282.93 251.081 286.98 253.231C291.03 255.381 294.21 258.361 296.53 262.161C298.84 265.961 300 270.241 300 275C300 279.76 298.84 284.04 296.53 287.84C294.22 291.64 291.04 294.62 286.98 296.77C282.93 298.92 278.36 300 273.28 300C268.2 300 263.63 298.92 259.58 296.77ZM279.88 287.02C281.85 285.88 283.41 284.26 284.55 282.18C285.69 280.1 286.27 277.71 286.27 275C286.27 272.291 285.7 269.911 284.55 267.821C283.4 265.741 281.85 264.121 279.88 262.981C277.91 261.841 275.71 261.261 273.29 261.261C270.87 261.261 268.66 261.831 266.7 262.981C264.73 264.131 263.17 265.741 262.03 267.821C260.89 269.901 260.31 272.301 260.31 275C260.31 277.7 260.88 280.09 262.03 282.18C263.17 284.26 264.73 285.88 266.7 287.02C268.67 288.17 270.87 288.74 273.29 288.74C275.71 288.74 277.91 288.17 279.88 287.02Z" fill="white"/>
+            </svg>
+          </div>
+          <p class="sidebar-tagline">Meeting Minutes</p>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="sidebar-section">
+          <button id="chooseFolderBtn" class="sidebar-btn">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.25 5.25V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V7.5C15.75 6.67157 15.0784 6 14.25 6H9L7.5 3.75H3.75C2.92157 3.75 2.25 4.42157 2.25 5.25Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Choose Audio Folder
+          </button>
+          <div class="folder-box">
+            <span>Audio folder</span>
+            <strong id="audioFolderLabel">Not selected</strong>
+          </div>
+        </div>
+
+        <div class="privacy-note">
+          <svg class="privacy-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.75L2.625 3.5V6.125C2.625 8.9687 4.48 11.6025 7 12.25C9.52 11.6025 11.375 8.9687 11.375 6.125V3.5L7 1.75Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" opacity=".6"/></svg>
+          All recordings and notes stay on this computer. No meeting data is uploaded.
+        </div>
+        <div class="developer-credit">
+          Developed by Sifat Alam Siddiqi
+        </div>
+      </aside>
+
+      <!-- ===== Main Content ===== -->
+      <section class="content">
+
+        <!-- Setup Warning -->
+        <section class="panel setup-warning" id="setupWarning">
+          <h2>Setup Required</h2>
+          <p>Choose an audio save folder before creating or recording meetings.</p>
+        </section>
+
+        <!-- AI Setup -->
+        <section class="panel ai-setup-panel" id="aiSetupPanel" style="display:none">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">AI Setup</p>
+              <h2 id="aiSetupTitle">Checking local AI…</h2>
+            </div>
+            <span id="aiSetupPill" class="pill">Checking</span>
+          </div>
+          <p id="aiSetupDetail" class="ai-setup-detail">Verifying Ollama installation and model availability.</p>
+          <div class="ai-progress-track" id="aiProgressBar" style="display:none">
+            <div class="ai-progress-fill" id="aiProgressFill"></div>
+          </div>
+          <div class="ai-setup-actions" id="aiSetupActions" style="display:none">
+            <button id="retryAiBtn" class="secondary">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0110.89-3.48M14 2v4h-4M14 8a6 6 0 01-10.89 3.48M2 14v-4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Retry Setup
+            </button>
+          </div>
+        </section>
+
+        <!-- New Meeting -->
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">New Meeting</p>
+              <h2>Record a meeting</h2>
+            </div>
+            <span id="statusPill" class="pill">Ready</span>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Meeting title
+              <input id="titleInput" placeholder="Project planning meeting" />
+            </label>
+            <label>
+              Client / Company
+              <input id="clientInput" placeholder="ABC Software Ltd." />
+            </label>
+            <label>
+              Participants
+              <input id="participantsInput" placeholder="Team lead, client, developer" />
+            </label>
+            <label>
+              Meeting type
+              <select id="typeInput">
+                <option>Online Meeting</option>
+                <option>Offline Meeting</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="record-controls">
+            <label class="check-row">
+              <input id="systemAudioInput" type="checkbox" checked />
+              Try to capture system audio for Online Meeting
+            </label>
+
+            <div class="button-row">
+              <button id="startBtn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5" fill="currentColor"/></svg>
+                Start Recording
+              </button>
+              <button id="pauseMicBtn" class="secondary" disabled>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 4v8M11 4v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                Pause Mic
+              </button>
+              <button id="stopBtn" class="danger" disabled>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
+                Stop Recording
+              </button>
+              <button id="processBtn" class="secondary" disabled>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v4l3 1.5M14 8a6 6 0 11-12 0 6 6 0 0112 0z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Generate Minutes
+              </button>
+              <button id="uploadBtn" class="secondary">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 11v1.5a1.5 1.5 0 001.5 1.5h7a1.5 1.5 0 001.5-1.5V11M11 5.5L8 2.5M8 2.5L5 5.5M8 2.5V10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Upload Audio
+              </button>
+            </div>
+
+            <p id="timerLabel" class="timer">00:00</p>
+
+            <div class="audio-status">
+              <span id="micStatus">Microphone: not recording</span>
+              <span id="systemStatus">System audio: not recording</span>
+            </div>
+
+            <p class="hint">For an Online Meeting with a headset, system audio must be active. Keep the other participant speaking for a few seconds after pressing Start Recording.</p>
+          </div>
+        </section>
+
+        <!-- Editor -->
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Editor</p>
+              <h2>Generated minutes</h2>
+            </div>
+            <button id="exportBtn" class="secondary" disabled>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 11v1.5a1.5 1.5 0 001.5 1.5h7a1.5 1.5 0 001.5-1.5V11M11 7.5L8 10.5M8 10.5L5 7.5M8 10.5V3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Export Word
+            </button>
+          </div>
+
+          <textarea id="minutesEditor" placeholder="Generated meeting minutes will appear here. You can edit before exporting."></textarea>
+          <p id="exportPathLabel" class="export-path"></p>
+        </section>
+
+        <!-- History -->
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">History</p>
+              <h2>Recent meetings</h2>
+            </div>
+            <button id="clearHistoryBtn" class="secondary" style="display: none;">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4H14M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M3 4H13V13C13 13.5523 12.5523 14 12 14H4C3.44772 14 3 13.5523 3 13V4Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Clear History
+            </button>
+          </div>
+          <div id="meetingList" class="meeting-list"></div>
+        </section>
+
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

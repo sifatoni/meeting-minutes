@@ -1,0 +1,23 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("meetingApp", {
+  getState: () => ipcRenderer.invoke("app:getState"),
+  chooseAudioFolder: () => ipcRenderer.invoke("app:chooseAudioFolder"),
+  uploadExistingAudio: () => ipcRenderer.invoke("app:uploadExistingAudio"),
+  importAudio: (payload) => ipcRenderer.invoke("meeting:importAudio", payload),
+  createMeeting: (payload) => ipcRenderer.invoke("meeting:create", payload),
+  saveRecording: (payload) => ipcRenderer.invoke("meeting:saveRecording", payload),
+  deleteSourceRecordings: (meetingId) => ipcRenderer.invoke("meeting:deleteSourceRecordings", meetingId),
+  processMeeting: (meetingId) => ipcRenderer.invoke("meeting:process", meetingId),
+  updateMinutes: (payload) => ipcRenderer.invoke("meeting:updateMinutes", payload),
+  exportDocx: (payload) => ipcRenderer.invoke("meeting:exportDocx", payload),
+  clearHistory: () => ipcRenderer.invoke("meeting:clearHistory"),
+
+  // Ollama auto-setup
+  checkOllama: () => ipcRenderer.invoke("ollama:check"),
+  setupOllama: () => ipcRenderer.invoke("ollama:setup"),
+  onOllamaProgress: (callback) => {
+    ipcRenderer.removeAllListeners("ollama:progress");
+    ipcRenderer.on("ollama:progress", (_event, data) => callback(data));
+  }
+});
