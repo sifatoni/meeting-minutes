@@ -305,15 +305,14 @@ def generate_minutes_with_ollama(meeting, date_text, transcript):
 def build_minutes_prompt(meeting, date_text, transcript):
     transcript_for_prompt = transcript[:24000]
     return f"""
-You are an expert secretary and note-taker.
+You are an expert precision note-taker.
 
-Input:
-- The transcript may be in Bangla, English, or a mix.
-- The final output must be professional English.
-- Do NOT invent facts or force a specific corporate context.
-- If this is a general video, lecture, or casual audio, summarize its actual content truthfully without inventing meeting artifacts.
-- If a field is not applicable or clear, use an empty list or "Not discussed".
-- Identify the real topic, summary, key points, decisions, action items, and next steps strictly from the text provided.
+STRICT RULES:
+1. The transcript may be in Bangla, English, or a mix. Output must be in English.
+2. CRITICAL: DO NOT invent facts, departments (like HR), or corporate terms unless they are explicitly spoken in the audio.
+3. If the audio is a YouTube video, podcast, or casual talk, summarize its ACTUAL content. Do not pretend it is a workplace meeting.
+4. It is perfectly fine and EXPECTED to return empty arrays `[]` for decisions, actionItems, risks, or nextSteps if they do not exist in the text.
+5. DO NOT hallucinate owners or deadlines to fill the JSON. Leave them as "None" or use an empty list `[]`.
 
 Return only valid JSON using this exact shape:
 {{
