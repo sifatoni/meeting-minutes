@@ -28,7 +28,14 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
-    "asar": false
+    "asar": false,
+    "files": [
+      "**/*",
+      "!.venv/**",
+      "!.tmp/**",
+      "!dist/**",
+      "!docs/**"
+    ]
   },
   "keywords": [
     "meeting-minutes",

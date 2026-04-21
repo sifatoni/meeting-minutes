@@ -21,11 +21,51 @@ function getPythonExecutable() {
     ? path.join(appPath, ".venv", "Scripts", "python.exe")
     : path.join(appPath, ".venv", "bin", "python");
 
+  // 1. Try bundled venv (dev mode)
   if (fs.existsSync(localVenvPython)) {
     return localVenvPython;
   }
 
-  return "python";
+  // 2. Try to find python on PATH
+  if (process.platform === "win32") {
+    try {
+      const result = execSync("where python 2>nul", {
+        windowsHide: true,
+        encoding: "utf8",
+        timeout: 5000
+      });
+      const first = result.trim().split(/\r?\n/)[0].trim();
+      if (first && fs.existsSync(first)) return first;
+    } catch {}
+  } else {
+    try {
+      const result = execSync("which python3 2>/dev/null || which python 2>/dev/null", {
+        encoding: "utf8",
+        timeout: 5000
+      });
+      const first = result.trim().split(/\r?\n/)[0].trim();
+      if (first && fs.existsSync(first)) return first;
+    } catch {}
+  }
+
+  // 3. Try common Windows install locations
+  if (process.platform === "win32") {
+    const candidates = [
+      "C:\\Python313\\python.exe",
+      "C:\\Python312\\python.exe",
+      "C:\\Python311\\python.exe",
+      "C:\\Python310\\python.exe",
+      path.join(process.env.LOCALAPPDATA || "", "Programs", "Python", "Python313", "python.exe"),
+      path.join(process.env.LOCALAPPDATA || "", "Programs", "Python", "Python312", "python.exe"),
+      path.join(process.env.LOCALAPPDATA || "", "Programs", "Python", "Python311", "python.exe"),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+
+  // Fallback — will likely fail but gives a clear error
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 function ensureDir(dirPath) {
@@ -332,10 +372,19 @@ ipcMain.handle("meeting:clearHistory", async () => {
 
 function runPython(scriptPath, input) {
   return new Promise((resolve, reject) => {
-    const child = spawn(getPythonExecutable(), [scriptPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
-    });
+    const pythonExe = getPythonExecutable();
+    let child;
+    try {
+      child = spawn(pythonExe, [scriptPath], {
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true
+      });
+    } catch (err) {
+      reject(new Error(
+        `Could not start Python. Please install Python 3.10+ from https://www.python.org/downloads/ and ensure it is added to your system PATH.\n\nDetails: ${err.message}`
+      ));
+      return;
+    }
 
     let stdout = "";
     let stderr = "";
@@ -348,7 +397,18 @@ function runPython(scriptPath, input) {
       stderr += chunk.toString();
     });
 
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (err.code === "ENOENT") {
+        reject(new Error(
+          `Python was not found on this computer. Please install Python 3.10+ from https://www.python.org/downloads/ and make sure to check "Add Python to PATH" during installation.\n\nSearched for: ${pythonExe}`
+        ));
+      } else {
+        reject(new Error(
+          `Failed to run Python: ${err.message}\n\nSearched for: ${pythonExe}`
+        ));
+      }
+    });
+
     child.on("close", (code) => {
       if (stderr) {
         console.log("[Python stderr]", stderr);
