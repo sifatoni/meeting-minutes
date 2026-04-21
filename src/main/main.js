@@ -134,10 +134,131 @@ function configureMediaCapture() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   configureMediaCapture();
   createWindow();
+  // Ensure Python and pip dependencies are available (especially on Mac)
+  try {
+    await ensurePythonAndDeps();
+  } catch (err) {
+    console.error("[Python setup]", err.message);
+  }
 });
+
+// ===================================================================
+// First-Launch Python & Pip Dependency Setup
+// ===================================================================
+
+const PYTHON_MAC_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.3/python-3.13.3-macos11.pkg";
+const REQUIRED_PIP_PACKAGES = ["faster-whisper==1.2.1", "openrouter", "groq"];
+
+function isPythonAvailable() {
+  try {
+    const cmd = process.platform === "win32" ? "python --version" : "python3 --version";
+    execSync(cmd, { windowsHide: true, encoding: "utf8", timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function arePipDepsInstalled() {
+  const pythonExe = getPythonExecutable();
+  try {
+    const result = execSync(`"${pythonExe}" -c "import faster_whisper; print('ok')"`, {
+      windowsHide: true,
+      encoding: "utf8",
+      timeout: 10000
+    });
+    return result.trim() === "ok";
+  } catch {
+    return false;
+  }
+}
+
+async function ensurePythonAndDeps() {
+  // On Mac, install Python if missing
+  if (process.platform === "darwin" && !isPythonAvailable()) {
+    sendSetup("python", "Python not found. Downloading Python installer…", 0);
+    const tmpDir = path.join(app.getPath("temp"), "python-setup");
+    ensureDir(tmpDir);
+    const installerPath = path.join(tmpDir, "python-3.13.3.pkg");
+
+    await new Promise((resolve, reject) => {
+      const follow = (currentUrl, depth) => {
+        if (depth > 10) { reject(new Error("Too many redirects.")); return; }
+        const mod = currentUrl.startsWith("https") ? https : http;
+        mod.get(currentUrl, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume();
+            let next = res.headers.location;
+            if (next.startsWith("/")) {
+              const u = new URL(currentUrl);
+              next = `${u.protocol}//${u.host}${next}`;
+            }
+            follow(next, depth + 1);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            res.resume();
+            reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+            return;
+          }
+          const total = parseInt(res.headers["content-length"] || "0", 10);
+          let received = 0;
+          const ws = fs.createWriteStream(installerPath);
+          res.on("data", (chunk) => {
+            received += chunk.length;
+            if (total > 0) {
+              const pct = Math.round((received / total) * 100);
+              sendSetup("python", `Downloading Python… ${(received / 1048576).toFixed(0)}/${(total / 1048576).toFixed(0)} MB`, pct);
+            }
+          });
+          res.pipe(ws);
+          ws.on("finish", () => { ws.close(); resolve(); });
+          ws.on("error", (err) => { fs.unlink(installerPath, () => {}); reject(err); });
+        }).on("error", reject);
+      };
+      follow(PYTHON_MAC_INSTALLER_URL, 0);
+    });
+
+    sendSetup("python", "Installing Python 3.13…", -1);
+    await new Promise((resolve, reject) => {
+      const child = spawn("sudo", ["installer", "-pkg", installerPath, "-target", "/"], {
+        stdio: "ignore"
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        code === 0 ? resolve() : reject(new Error(`Python installer exited with code ${code}`));
+      });
+    });
+
+    try { fs.unlinkSync(installerPath); } catch {}
+    sendSetup("python", "Python installed.", 100);
+  }
+
+  // Install pip dependencies if missing
+  if (!arePipDepsInstalled()) {
+    sendSetup("python", "Installing Python dependencies…", -1);
+    const pythonExe = getPythonExecutable();
+    await new Promise((resolve, reject) => {
+      const args = ["-m", "pip", "install", ...REQUIRED_PIP_PACKAGES];
+      const child = spawn(pythonExe, args, { windowsHide: true, stdio: "pipe" });
+      child.on("error", (err) => {
+        console.error("[pip install error]", err.message);
+        resolve(); // Don't block app launch
+      });
+      child.on("close", (code) => {
+        if (code === 0) {
+          sendSetup("python", "Dependencies installed.", 100);
+        } else {
+          console.error(`[pip install] exited with code ${code}`);
+        }
+        resolve(); // Don't block app launch
+      });
+    });
+  }
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
