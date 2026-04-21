@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("meetingApp", {
   getState: () => ipcRenderer.invoke("app:getState"),
+  saveConfig: (payload) => ipcRenderer.invoke("app:saveConfig", payload),
   chooseAudioFolder: () => ipcRenderer.invoke("app:chooseAudioFolder"),
   uploadExistingAudio: () => ipcRenderer.invoke("app:uploadExistingAudio"),
   importAudio: (payload) => ipcRenderer.invoke("meeting:importAudio", payload),

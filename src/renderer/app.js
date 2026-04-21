@@ -19,6 +19,20 @@ const state = {
 const elements = {
   chooseFolderBtn: document.getElementById("chooseFolderBtn"),
   audioFolderLabel: document.getElementById("audioFolderLabel"),
+  modelSelect: document.getElementById("modelSelect"),
+  apiKeyBox: document.getElementById("apiKeyBox"),
+  apiKeyInputWrapper: document.getElementById("apiKeyInputWrapper"),
+  apiKeyInput: document.getElementById("apiKeyInput"),
+  apiKeyConfirmBtn: document.getElementById("apiKeyConfirmBtn"),
+  apiKeyEditLink: document.getElementById("apiKeyEditLink"),
+
+  transcriptionModelSelect: document.getElementById("transcriptionModelSelect"),
+  groqApiKeyBox: document.getElementById("groqApiKeyBox"),
+  groqApiKeyInputWrapper: document.getElementById("groqApiKeyInputWrapper"),
+  groqApiKeyInput: document.getElementById("groqApiKeyInput"),
+  groqApiKeyConfirmBtn: document.getElementById("groqApiKeyConfirmBtn"),
+  groqApiKeyEditLink: document.getElementById("groqApiKeyEditLink"),
+
   setupWarning: document.getElementById("setupWarning"),
   titleInput: document.getElementById("titleInput"),
   clientInput: document.getElementById("clientInput"),
@@ -61,10 +75,81 @@ elements.uploadBtn.addEventListener("click", uploadExistingAudio);
 elements.retryAiBtn.addEventListener("click", runOllamaSetup);
 elements.clearHistoryBtn.addEventListener("click", clearHistory);
 
+elements.modelSelect.addEventListener("change", async () => {
+  elements.apiKeyBox.style.display = elements.modelSelect.value === "online" ? "block" : "none";
+  state.config.model = elements.modelSelect.value;
+  await window.meetingApp.saveConfig({ model: state.config.model });
+});
+
+elements.apiKeyConfirmBtn.addEventListener("click", async () => {
+  state.config.openRouterApiKey = elements.apiKeyInput.value;
+  await window.meetingApp.saveConfig({ openRouterApiKey: state.config.openRouterApiKey });
+  elements.apiKeyInputWrapper.style.display = "none";
+  elements.apiKeyEditLink.style.display = "block";
+});
+
+elements.apiKeyEditLink.addEventListener("click", () => {
+  elements.apiKeyEditLink.style.display = "none";
+  elements.apiKeyInputWrapper.style.display = "flex";
+  elements.apiKeyInput.focus();
+});
+
+elements.transcriptionModelSelect.addEventListener("change", async () => {
+  elements.groqApiKeyBox.style.display = elements.transcriptionModelSelect.value === "groq" ? "block" : "none";
+  state.config.transcriptionModel = elements.transcriptionModelSelect.value;
+  await window.meetingApp.saveConfig({ transcriptionModel: state.config.transcriptionModel });
+});
+
+elements.groqApiKeyConfirmBtn.addEventListener("click", async () => {
+  state.config.groqApiKey = elements.groqApiKeyInput.value;
+  await window.meetingApp.saveConfig({ groqApiKey: state.config.groqApiKey });
+  elements.groqApiKeyInputWrapper.style.display = "none";
+  elements.groqApiKeyEditLink.style.display = "block";
+});
+
+elements.groqApiKeyEditLink.addEventListener("click", () => {
+  elements.groqApiKeyEditLink.style.display = "none";
+  elements.groqApiKeyInputWrapper.style.display = "flex";
+  elements.groqApiKeyInput.focus();
+});
+
 async function init() {
   const appState = await window.meetingApp.getState();
   state.config = appState.config || {};
   state.meetings = appState.meetings || [];
+  
+  if (state.config.model) {
+    elements.modelSelect.value = state.config.model;
+  } else {
+    // Default model if none selected
+    state.config.model = elements.modelSelect.value;
+  }
+  if (state.config.openRouterApiKey) {
+    elements.apiKeyInput.value = state.config.openRouterApiKey;
+    elements.apiKeyInputWrapper.style.display = "none";
+    elements.apiKeyEditLink.style.display = "block";
+  } else {
+    elements.apiKeyInputWrapper.style.display = "flex";
+    elements.apiKeyEditLink.style.display = "none";
+  }
+  elements.apiKeyBox.style.display = elements.modelSelect.value === "online" ? "block" : "none";
+
+  if (state.config.transcriptionModel) {
+    elements.transcriptionModelSelect.value = state.config.transcriptionModel;
+  } else {
+    state.config.transcriptionModel = elements.transcriptionModelSelect.value;
+  }
+
+  if (state.config.groqApiKey) {
+    elements.groqApiKeyInput.value = state.config.groqApiKey;
+    elements.groqApiKeyInputWrapper.style.display = "none";
+    elements.groqApiKeyEditLink.style.display = "block";
+  } else {
+    elements.groqApiKeyInputWrapper.style.display = "flex";
+    elements.groqApiKeyEditLink.style.display = "none";
+  }
+  elements.groqApiKeyBox.style.display = elements.transcriptionModelSelect.value === "groq" ? "block" : "none";
+
   render();
   checkAndSetupOllama();
 }
@@ -490,6 +575,7 @@ async function runOllamaSetup() {
 
     if (data.pct >= 0) {
       elements.aiProgressBar.style.display = "block";
+      elements.aiProgressFill.classList.remove("indeterminate");
       elements.aiProgressFill.style.width = `${data.pct}%`;
     } else {
       elements.aiProgressFill.style.width = "100%";

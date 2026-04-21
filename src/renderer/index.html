@@ -49,6 +49,38 @@
             <span>Audio folder</span>
             <strong id="audioFolderLabel">Not selected</strong>
           </div>
+          <div class="folder-box" style="margin-top: 16px;">
+            <span>AI Model</span>
+            <select id="modelSelect" style="width: 100%; margin-top: 6px; padding: 6px; border-radius: 4px; border: 1px solid #4a4d52; background: #2f3136; color: white;">
+              <option value="qwen2.5:3b">Local Model</option>
+              <option value="gemini-3-flash-preview">Cloud Model</option>
+              <option value="online" style="display: none;">Online model</option>
+            </select>
+          </div>
+          <div class="folder-box" id="apiKeyBox" style="display: none; margin-top: 10px;">
+            <span>OpenRouter API Key</span>
+            <div id="apiKeyInputWrapper" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+              <input type="password" id="apiKeyInput" placeholder="API Key" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #4a4d52; background: #2f3136; color: white; display: block; box-sizing: border-box;" />
+              <button id="apiKeyConfirmBtn" class="sidebar-btn" style="width: 100%; margin: 0; padding: 6px;">Confirm</button>
+            </div>
+            <a id="apiKeyEditLink" style="display: none; color: #43b5a0; font-size: 12px; margin-top: 6px; text-decoration: underline; cursor: pointer;">Edit/Remove/New API key</a>
+          </div>
+
+          <div class="folder-box" style="margin-top: 16px;">
+            <span>Transcription</span>
+            <select id="transcriptionModelSelect" style="width: 100%; margin-top: 6px; padding: 6px; border-radius: 4px; border: 1px solid #4a4d52; background: #2f3136; color: white;">
+              <option value="local">Local (Medium Model)</option>
+              <option value="groq">Online (Groq API)</option>
+            </select>
+          </div>
+          <div class="folder-box" id="groqApiKeyBox" style="display: none; margin-top: 10px;">
+            <span>Groq API Key</span>
+            <div id="groqApiKeyInputWrapper" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+              <input type="password" id="groqApiKeyInput" placeholder="API Key" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #4a4d52; background: #2f3136; color: white; display: block; box-sizing: border-box;" />
+              <button id="groqApiKeyConfirmBtn" class="sidebar-btn" style="width: 100%; margin: 0; padding: 6px;">Confirm</button>
+            </div>
+            <a id="groqApiKeyEditLink" style="display: none; color: #43b5a0; font-size: 12px; margin-top: 6px; text-decoration: underline; cursor: pointer;">Edit/Remove/New API key</a>
+          </div>
         </div>
 
         <div class="privacy-note">

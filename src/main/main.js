@@ -128,6 +128,13 @@ ipcMain.handle("app:chooseAudioFolder", async () => {
   return config;
 });
 
+ipcMain.handle("app:saveConfig", async (_event, patch) => {
+  const config = readJson(getConfigPath(), {});
+  Object.assign(config, patch);
+  writeJson(getConfigPath(), config);
+  return config;
+});
+
 ipcMain.handle("app:uploadExistingAudio", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Upload Existing Recording",
@@ -267,10 +274,12 @@ ipcMain.handle("meeting:process", async (_event, meetingId) => {
   meeting.status = "Processing";
   writeJson(getMeetingsPath(), meetings);
 
+  const config = readJson(getConfigPath(), {});
   const scriptPath = path.join(app.getAppPath(), "scripts", "process_meeting.py");
   const input = JSON.stringify({
     meeting,
-    outputDir: meetingDataDir
+    outputDir: meetingDataDir,
+    config
   });
 
   const result = await runPython(scriptPath, input);
@@ -300,10 +309,12 @@ ipcMain.handle("meeting:exportDocx", async (_event, payload) => {
   writeJson(minutesPath, payload.minutes);
 
   const scriptPath = path.join(app.getAppPath(), "scripts", "process_meeting.py");
+  const config = readJson(getConfigPath(), {});
   const result = await runPython(scriptPath, JSON.stringify({
     meeting,
     outputDir: meetingDataDir,
-    exportOnly: true
+    exportOnly: true,
+    config
   }));
   const output = JSON.parse(result);
 
@@ -339,6 +350,9 @@ function runPython(scriptPath, input) {
 
     child.on("error", reject);
     child.on("close", (code) => {
+      if (stderr) {
+        console.log("[Python stderr]", stderr);
+      }
       if (code !== 0) {
         reject(new Error(stderr || `Python worker exited with code ${code}`));
         return;
@@ -356,8 +370,15 @@ function runPython(scriptPath, input) {
 // ===================================================================
 
 const OLLAMA_API = "http://127.0.0.1:11434";
-const OLLAMA_MODEL = process.env.MEETING_OLLAMA_MODEL || "qwen2.5:3b";
 const OLLAMA_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe";
+
+function getOllamaModel() {
+  const config = readJson(getConfigPath(), {});
+  if (config.model && config.model !== "online") {
+    return config.model;
+  }
+  return process.env.MEETING_OLLAMA_MODEL || "gemini-3-flash-preview";
+}
 
 function findOllamaPath() {
   const localAppData = process.env.LOCALAPPDATA || "";
@@ -417,8 +438,9 @@ async function ollamaStatus() {
     try {
       const r = await httpGet(`${OLLAMA_API}/api/tags`);
       if (r.ok && r.data && Array.isArray(r.data.models)) {
+        const modelTarget = getOllamaModel();
         out.modelReady = r.data.models.some((m) =>
-          m.name === OLLAMA_MODEL || m.name === `${OLLAMA_MODEL}:latest`
+          m.name === modelTarget || m.name === `${modelTarget}:latest`
         );
       }
     } catch {
@@ -550,14 +572,16 @@ ipcMain.handle("ollama:setup", async () => {
 
   // Step 3 — Pull the model if not present
   if (st.running && !st.modelReady) {
-    sendSetup("model", `Pulling model ${OLLAMA_MODEL}…`, 0);
+    const modelToPull = getOllamaModel();
+    sendSetup("model", `Pulling model ${modelToPull}…`, 0);
 
     await new Promise((resolve, reject) => {
       const exe = st.ollamaPath || "ollama";
-      const child = spawn(exe, ["pull", OLLAMA_MODEL], { windowsHide: true });
+      const child = spawn(exe, ["pull", modelToPull], { windowsHide: true });
 
       const onData = (chunk) => {
-        const text = chunk.toString().trim();
+        let text = chunk.toString().replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
+        text = text.replace(/▕.*?▏/g, '').replace(/\s+/g, ' ').trim();
         if (!text) return;
         const match = text.match(/(\d+)%/);
         sendSetup("model", text, match ? parseInt(match[1], 10) : -1);
