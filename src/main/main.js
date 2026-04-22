@@ -553,6 +553,9 @@ function runPython(scriptPath, input) {
 const OLLAMA_API = "http://127.0.0.1:11434";
 const OLLAMA_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe";
 
+// All local models that the program supports — all must be available
+const REQUIRED_OLLAMA_MODELS = ["qwen2.5:3b", "gemini-3-flash-preview"];
+
 function getOllamaModel() {
   const config = readJson(getConfigPath(), {});
   if (config.model && config.model !== "online") {
@@ -603,7 +606,14 @@ function httpGet(url) {
 }
 
 async function ollamaStatus() {
-  const out = { installed: false, running: false, modelReady: false, ollamaPath: null };
+  const out = {
+    installed: false,
+    running: false,
+    modelReady: false,
+    ollamaPath: null,
+    installedModels: [],
+    missingModels: []
+  };
 
   out.ollamaPath = findOllamaPath();
   out.installed = !!out.ollamaPath;
@@ -619,13 +629,23 @@ async function ollamaStatus() {
     try {
       const r = await httpGet(`${OLLAMA_API}/api/tags`);
       if (r.ok && r.data && Array.isArray(r.data.models)) {
-        const modelTarget = getOllamaModel();
-        out.modelReady = r.data.models.some((m) =>
-          m.name === modelTarget || m.name === `${modelTarget}:latest`
-        );
+        const availableNames = r.data.models.map((m) => m.name);
+        out.installedModels = availableNames;
+
+        for (const requiredModel of REQUIRED_OLLAMA_MODELS) {
+          const found = availableNames.some((name) =>
+            name === requiredModel || name === `${requiredModel}:latest`
+          );
+          if (!found) {
+            out.missingModels.push(requiredModel);
+          }
+        }
+
+        out.modelReady = out.missingModels.length === 0;
       }
     } catch {
       out.modelReady = false;
+      out.missingModels = [...REQUIRED_OLLAMA_MODELS];
     }
   }
 
@@ -751,32 +771,40 @@ ipcMain.handle("ollama:setup", async () => {
     st = await ollamaStatus();
   }
 
-  // Step 3 — Pull the model if not present
+  // Step 3 — Pull all missing models
   if (st.running && !st.modelReady) {
-    const modelToPull = getOllamaModel();
-    sendSetup("model", `Pulling model ${modelToPull}…`, 0);
+    const modelsToPull = st.missingModels.length > 0 ? st.missingModels : [...REQUIRED_OLLAMA_MODELS];
+    const totalModels = modelsToPull.length;
 
-    await new Promise((resolve, reject) => {
-      const exe = st.ollamaPath || "ollama";
-      const child = spawn(exe, ["pull", modelToPull], { windowsHide: true });
+    for (let i = 0; i < totalModels; i++) {
+      const modelToPull = modelsToPull[i];
+      const modelLabel = `(${i + 1}/${totalModels}) ${modelToPull}`;
+      sendSetup("model", `Pulling model ${modelLabel}…`, 0);
 
-      const onData = (chunk) => {
-        let text = chunk.toString().replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
-        text = text.replace(/▕.*?▏/g, '').replace(/\s+/g, ' ').trim();
-        if (!text) return;
-        const match = text.match(/(\d+)%/);
-        sendSetup("model", text, match ? parseInt(match[1], 10) : -1);
-      };
+      await new Promise((resolve, reject) => {
+        const exe = st.ollamaPath || "ollama";
+        const child = spawn(exe, ["pull", modelToPull], { windowsHide: true });
 
-      child.stdout.on("data", onData);
-      child.stderr.on("data", onData);
-      child.on("error", reject);
-      child.on("close", (code) => {
-        code === 0 ? resolve() : reject(new Error(`Model pull failed (code ${code}).`));
+        const onData = (chunk) => {
+          let text = chunk.toString().replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
+          text = text.replace(/▕.*?▏/g, '').replace(/\s+/g, ' ').trim();
+          if (!text) return;
+          const match = text.match(/(\d+)%/);
+          sendSetup("model", `${modelLabel}: ${text}`, match ? parseInt(match[1], 10) : -1);
+        };
+
+        child.stdout.on("data", onData);
+        child.stderr.on("data", onData);
+        child.on("error", reject);
+        child.on("close", (code) => {
+          code === 0 ? resolve() : reject(new Error(`Model pull failed for ${modelToPull} (code ${code}).`));
+        });
       });
-    });
 
-    sendSetup("model", "Model ready.", 100);
+      sendSetup("model", `Model ${modelLabel} ready.`, 100);
+    }
+
+    sendSetup("model", `All ${totalModels} models ready.`, 100);
   }
 
   return ollamaStatus();

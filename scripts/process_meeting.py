@@ -290,29 +290,34 @@ def build_minutes_from_transcript(meeting, transcript, config):
         "client": meeting.get("client", ""),
         "date": date_text,
         "participants": meeting.get("participants", ""),
-        "meetingObjective": "Review the transcribed meeting discussion.",
-        "discussionSummary": "A Bangla transcript has been generated locally, but the local LLM is not ready yet.",
+        "meetingObjective": "Could not generate structured minutes — AI model is not available.",
+        "discussionSummary": (
+            "The audio was transcribed successfully, but the AI model (Ollama) is not running on this computer. "
+            "The app needs Ollama to convert the transcript into structured meeting minutes.\n\n"
+            "To fix this:\n"
+            "1. Open the app — the AI Setup panel should appear and install Ollama automatically.\n"
+            "2. Or install Ollama manually from https://ollama.com\n"
+            "3. After installing, run: ollama pull " + (config.get("model") or DEFAULT_OLLAMA_MODEL) + "\n"
+            "4. Then click Generate Minutes again."
+        ),
         "keyPoints": [
-            "Local Bangla transcription was generated from the audio file.",
-            "Install Ollama and pull the local model to generate structured English meeting minutes."
+            "Audio transcription completed successfully.",
+            "AI model (Ollama) is not installed or running — structured minutes cannot be generated yet."
         ],
         "decisions": [],
         "actionItems": [
             {
-                "task": "Install Ollama and pull the gemini-3-flash-preview model.",
+                "task": "Install Ollama and the required AI model.",
                 "owner": "User",
-                "deadline": "Before final minutes generation",
-                "notes": "Run: ollama pull gemini-3-flash-preview"
+                "deadline": "Before generating minutes",
+                "notes": "The app will try to install Ollama automatically on next launch. Or visit https://ollama.com"
             }
         ],
-        "risks": [
-            "If the transcript contains Hindi, Telugu, or random text, the transcription model is hallucinating from unclear audio or silence.",
-            "Structured topic detection needs a running local LLM."
-        ],
+        "risks": [],
         "nextSteps": [
-            "Install Ollama from https://ollama.com.",
-            "Run: ollama pull gemini-3-flash-preview.",
-            "Start the app again and click Generate Minutes."
+            "Restart the app to trigger automatic Ollama installation.",
+            "Or install Ollama manually and run: ollama pull " + (config.get("model") or DEFAULT_OLLAMA_MODEL),
+            "Click Generate Minutes again after Ollama is ready."
         ],
         "transcript": transcript_body
     }
@@ -375,6 +380,17 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
 
     sys.stderr.write(f"[DEBUG] Ollama: using model '{model_name}'\n")
     sys.stderr.write(f"[DEBUG] Ollama: transcript length = {len(transcript)} chars\n")
+
+    # First check if Ollama is reachable
+    try:
+        check_req = urllib.request.Request(
+            OLLAMA_GENERATE_URL.replace("/api/generate", ""),
+            method="GET"
+        )
+        urllib.request.urlopen(check_req, timeout=5)
+    except (urllib.error.URLError, OSError) as e:
+        sys.stderr.write(f"[DEBUG] Ollama is not reachable: {e}\n")
+        return None
 
     # Use the chat API with /no_think to prevent qwen3.5 thinking mode
     # which causes empty responses with format:json or timeouts without it

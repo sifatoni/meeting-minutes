@@ -384,8 +384,40 @@ function blobToBase64(blob) {
 
 async function processMeeting() {
   if (!state.currentMeeting) return;
-  setStatus("Processing... (this may take a few minutes)", true);
   elements.processBtn.disabled = true;
+
+  // Check if the selected model needs Ollama and if it's ready
+  const selectedModel = state.config.model || "";
+  if (selectedModel !== "online") {
+    try {
+      const ollamaStatus = await window.meetingApp.checkOllama();
+      if (!ollamaStatus.installed || !ollamaStatus.running || !ollamaStatus.modelReady) {
+        const missingCount = (ollamaStatus.missingModels || []).length;
+        const missingLabel = missingCount > 0 ? ` (${missingCount} model${missingCount > 1 ? 's' : ''} missing)` : '';
+        setStatus(`Setting up AI${missingLabel}... please wait`, true);
+        elements.aiSetupPanel.style.display = "block";
+        try {
+          await runOllamaSetupAndWait();
+          const recheckStatus = await window.meetingApp.checkOllama();
+          if (!recheckStatus.running || !recheckStatus.modelReady) {
+            alert("Ollama AI is not ready yet.\n\nPlease wait for the AI setup to complete in the panel above, or switch to 'Online model' in the sidebar if you have an API key.");
+            setStatus("AI Not Ready");
+            elements.processBtn.disabled = false;
+            return;
+          }
+        } catch (setupErr) {
+          alert("Could not set up local AI automatically.\n\nYou can:\n1. Wait and click 'Retry Setup' in the AI Setup panel\n2. Install Ollama manually from https://ollama.com\n3. Switch to an online model in the sidebar");
+          setStatus("AI Setup Failed");
+          elements.processBtn.disabled = false;
+          return;
+        }
+      }
+    } catch {
+      // checkOllama failed — proceed anyway and let the Python script handle it
+    }
+  }
+
+  setStatus("Processing... (this may take a few minutes)", true);
 
   try {
     const result = await window.meetingApp.processMeeting(state.currentMeeting.id);
@@ -407,6 +439,66 @@ async function processMeeting() {
     state.meetings = appState.meetings || [];
     renderMeetings();
   }
+}
+
+async function runOllamaSetupAndWait() {
+  return new Promise((resolve, reject) => {
+    elements.aiSetupActions.style.display = "none";
+    elements.aiSetupTitle.textContent = "Setting up local AI";
+    elements.aiSetupPill.textContent = "Setting up";
+    elements.aiSetupPill.className = "pill";
+    elements.aiSetupDetail.textContent = "Starting automatic setup…";
+    elements.aiProgressBar.style.display = "block";
+    elements.aiProgressFill.style.width = "0%";
+
+    window.meetingApp.onOllamaProgress((data) => {
+      const labels = { install: "Installing", service: "Starting", model: "Model" };
+      elements.aiSetupPill.textContent = labels[data.phase] || "Setting up";
+      elements.aiSetupDetail.textContent = data.detail;
+
+      if (data.pct >= 0) {
+        elements.aiProgressBar.style.display = "block";
+        elements.aiProgressFill.classList.remove("indeterminate");
+        elements.aiProgressFill.style.width = `${data.pct}%`;
+      } else {
+        elements.aiProgressFill.style.width = "100%";
+        elements.aiProgressFill.classList.add("indeterminate");
+      }
+    });
+
+    window.meetingApp.setupOllama().then((result) => {
+      elements.aiProgressFill.classList.remove("indeterminate");
+
+      if (result.installed && result.running && result.modelReady) {
+        elements.aiSetupTitle.textContent = "Local AI is ready";
+        elements.aiSetupPill.textContent = "Ready";
+        elements.aiSetupPill.className = "pill pill-success";
+        elements.aiSetupDetail.textContent = "Ollama and the AI model are installed. Proceeding to generate minutes…";
+        elements.aiProgressBar.style.display = "none";
+        setTimeout(() => {
+          elements.aiSetupPanel.style.display = "none";
+        }, 3000);
+        resolve(result);
+      } else {
+        elements.aiSetupTitle.textContent = "AI setup incomplete";
+        elements.aiSetupPill.textContent = "Incomplete";
+        elements.aiSetupPill.className = "pill pill-warning";
+        elements.aiSetupDetail.textContent = "Some components could not be set up.";
+        elements.aiSetupActions.style.display = "flex";
+        elements.aiProgressBar.style.display = "none";
+        reject(new Error("AI setup incomplete"));
+      }
+    }).catch((error) => {
+      elements.aiProgressFill.classList.remove("indeterminate");
+      elements.aiSetupTitle.textContent = "AI setup failed";
+      elements.aiSetupPill.textContent = "Error";
+      elements.aiSetupPill.className = "pill pill-error";
+      elements.aiSetupDetail.textContent = `${error.message || "Unknown error."}`;
+      elements.aiSetupActions.style.display = "flex";
+      elements.aiProgressBar.style.display = "none";
+      reject(error);
+    });
+  });
 }
 
 async function exportWord() {
@@ -591,7 +683,7 @@ async function runOllamaSetup() {
       elements.aiSetupTitle.textContent = "Local AI is ready";
       elements.aiSetupPill.textContent = "Ready";
       elements.aiSetupPill.className = "pill pill-success";
-      elements.aiSetupDetail.textContent = "Ollama and the qwen2.5:3b model are installed. Meeting minutes generation is available.";
+      elements.aiSetupDetail.textContent = "Ollama and all required AI models are installed. Meeting minutes generation is available.";
       elements.aiProgressBar.style.display = "none";
       setTimeout(() => {
         elements.aiSetupPanel.style.display = "none";
