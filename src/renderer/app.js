@@ -13,7 +13,10 @@ const state = {
   mixedChunks: [],
   timerId: null,
   startedAt: null,
-  latestMinutes: null
+  latestMinutes: null,
+  leads: [],
+  leadSearches: [],
+  leadBothContactsOnly: true
 };
 
 const elements = {
@@ -60,8 +63,39 @@ const elements = {
   aiProgressBar: document.getElementById("aiProgressBar"),
   aiProgressFill: document.getElementById("aiProgressFill"),
   aiSetupActions: document.getElementById("aiSetupActions"),
-  retryAiBtn: document.getElementById("retryAiBtn")
+  retryAiBtn: document.getElementById("retryAiBtn"),
+
+  leadStatusPill: document.getElementById("leadStatusPill"),
+  leadIndustryInput: document.getElementById("leadIndustryInput"),
+  leadCountrySelect: document.getElementById("leadCountrySelect"),
+  leadOrganizationInput: document.getElementById("leadOrganizationInput"),
+  leadDesignationsInput: document.getElementById("leadDesignationsInput"),
+  leadSearchBtn: document.getElementById("leadSearchBtn"),
+  leadExportBtn: document.getElementById("leadExportBtn"),
+  leadClearBtn: document.getElementById("leadClearBtn"),
+  leadBothContactsOnlyInput: document.getElementById("leadBothContactsOnlyInput"),
+  leadSummary: document.getElementById("leadSummary"),
+  leadTableBody: document.getElementById("leadTableBody"),
+  meetingModuleTab: document.getElementById("meetingModuleTab"),
+  leadModuleTab: document.getElementById("leadModuleTab"),
+  apolloApiKeyInput: document.getElementById("apolloApiKeyInput"),
+  apolloApiKeySaveBtn: document.getElementById("apolloApiKeySaveBtn"),
+  pdlApiKeyInput: document.getElementById("pdlApiKeyInput"),
+  pdlApiKeySaveBtn: document.getElementById("pdlApiKeySaveBtn"),
+  hunterApiKeyInput: document.getElementById("hunterApiKeyInput"),
+  hunterApiKeySaveBtn: document.getElementById("hunterApiKeySaveBtn")
 };
+
+const COUNTRY_FALLBACK_CODES = [
+  "AF","AL","DZ","AD","AO","AR","AM","AU","AT","AZ","BH","BD","BY","BE","BZ","BJ","BT","BO","BA","BW","BR",
+  "BN","BG","BF","BI","KH","CM","CA","CV","CF","TD","CL","CN","CO","KM","CG","CD","CR","CI","HR","CU","CY","CZ",
+  "DK","DJ","DO","EC","EG","SV","GQ","ER","EE","SZ","ET","FJ","FI","FR","GA","GM","GE","DE","GH","GR","GT","GN",
+  "GW","GY","HT","HN","HU","IS","IN","ID","IR","IQ","IE","IL","IT","JM","JP","JO","KZ","KE","KI","KP","KR","KW",
+  "KG","LA","LV","LB","LS","LR","LY","LT","LU","MG","MW","MY","MV","ML","MT","MR","MU","MX","MD","MN","ME","MA",
+  "MZ","MM","NA","NP","NL","NZ","NI","NE","NG","MK","NO","OM","PK","PA","PG","PY","PE","PH","PL","PT","QA","RO",
+  "RU","RW","SA","SN","RS","SL","SG","SK","SI","SB","SO","ZA","SS","ES","LK","SD","SR","SE","CH","SY","TW","TJ",
+  "TZ","TH","TL","TG","TO","TT","TN","TR","TM","UG","UA","AE","GB","US","UY","UZ","VE","VN","YE","ZM","ZW"
+];
 
 window.addEventListener("DOMContentLoaded", init);
 
@@ -74,6 +108,34 @@ elements.exportBtn.addEventListener("click", exportWord);
 elements.uploadBtn.addEventListener("click", uploadExistingAudio);
 elements.retryAiBtn.addEventListener("click", runOllamaSetup);
 elements.clearHistoryBtn.addEventListener("click", clearHistory);
+elements.leadSearchBtn.addEventListener("click", searchLeads);
+elements.leadExportBtn.addEventListener("click", exportLeadsCsv);
+elements.leadClearBtn.addEventListener("click", clearLeads);
+elements.meetingModuleTab.addEventListener("click", () => setActiveModule("meeting"));
+elements.leadModuleTab.addEventListener("click", () => setActiveModule("leads"));
+elements.apolloApiKeySaveBtn.addEventListener("click", async () => {
+  const key = elements.apolloApiKeyInput.value.trim();
+  await window.meetingApp.saveConfig({ apolloApiKey: key });
+  elements.apolloApiKeyInput.type = key ? "password" : "text";
+  setLeadStatus(key ? "Apollo API saved" : "Apollo API removed", key ? "success" : "warning");
+});
+elements.pdlApiKeySaveBtn.addEventListener("click", async () => {
+  const key = elements.pdlApiKeyInput.value.trim();
+  await window.meetingApp.saveConfig({ pdlApiKey: key });
+  elements.pdlApiKeyInput.type = key ? "password" : "text";
+  setLeadStatus(key ? "PDL API saved" : "PDL API removed", key ? "success" : "warning");
+});
+elements.hunterApiKeySaveBtn.addEventListener("click", async () => {
+  const key = elements.hunterApiKeyInput.value.trim();
+  await window.meetingApp.saveConfig({ hunterApiKey: key });
+  elements.hunterApiKeyInput.type = key ? "password" : "text";
+  setLeadStatus(key ? "Hunter API saved" : "Hunter API removed", key ? "success" : "warning");
+});
+elements.leadTableBody.addEventListener("click", onLeadTableClick);
+elements.leadBothContactsOnlyInput.addEventListener("change", () => {
+  state.leadBothContactsOnly = elements.leadBothContactsOnlyInput.checked;
+  renderLeads();
+});
 
 elements.modelSelect.addEventListener("change", async () => {
   elements.apiKeyBox.style.display = elements.modelSelect.value === "online" ? "block" : "none";
@@ -115,8 +177,11 @@ elements.groqApiKeyEditLink.addEventListener("click", () => {
 
 async function init() {
   const appState = await window.meetingApp.getState();
+  const leadState = await window.meetingApp.getLeadsState();
   state.config = appState.config || {};
   state.meetings = appState.meetings || [];
+  state.leads = leadState.leads || [];
+  state.leadSearches = leadState.searches || [];
   
   if (state.config.model) {
     elements.modelSelect.value = state.config.model;
@@ -149,7 +214,23 @@ async function init() {
     elements.groqApiKeyEditLink.style.display = "none";
   }
   elements.groqApiKeyBox.style.display = elements.transcriptionModelSelect.value === "groq" ? "block" : "none";
+  if (state.config.apolloApiKey) {
+    elements.apolloApiKeyInput.value = state.config.apolloApiKey;
+    elements.apolloApiKeyInput.type = "password";
+  }
+  if (state.config.pdlApiKey) {
+    elements.pdlApiKeyInput.value = state.config.pdlApiKey;
+    elements.pdlApiKeyInput.type = "password";
+  }
+  if (state.config.hunterApiKey) {
+    elements.hunterApiKeyInput.value = state.config.hunterApiKey;
+    elements.hunterApiKeyInput.type = "password";
+  }
 
+  populateCountryDropdown();
+
+  const savedModule = localStorage.getItem("activeModule");
+  setActiveModule(savedModule === "leads" ? "leads" : "meeting");
   render();
   checkAndSetupOllama();
 }
@@ -597,6 +678,7 @@ function render() {
   elements.startBtn.disabled = !state.config.audioDirectory;
   elements.uploadBtn.disabled = !state.config.audioDirectory;
   renderMeetings();
+  renderLeads();
 }
 
 function renderMeetings() {
@@ -632,6 +714,252 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function countryFlagFromCode(code) {
+  return String(code || "")
+    .toUpperCase()
+    .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+}
+
+function getCountryCodes() {
+  if (typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function") {
+    try {
+      const regions = Intl.supportedValuesOf("region");
+      if (Array.isArray(regions) && regions.length) {
+        return regions.filter((c) => /^[A-Z]{2}$/.test(c));
+      }
+    } catch {}
+  }
+  return COUNTRY_FALLBACK_CODES;
+}
+
+function populateCountryDropdown() {
+  const display = new Intl.DisplayNames(["en"], { type: "region" });
+  const codes = getCountryCodes();
+  const countries = codes
+    .map((code) => {
+      const name = display.of(code);
+      if (!name || name === code) return null;
+      return { code, name, flag: countryFlagFromCode(code) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  elements.leadCountrySelect.innerHTML = countries.map((country) => `
+    <option value="${country.name}" data-country-code="${country.code}">
+      ${country.flag} ${country.name} (${country.code})
+    </option>
+  `).join("");
+
+  const preferred = ["Bangladesh", "United States", "United Kingdom", "India"];
+  const options = [...elements.leadCountrySelect.options];
+  const firstPreferred = options.find((opt) => preferred.includes(opt.value));
+  if (firstPreferred) {
+    elements.leadCountrySelect.value = firstPreferred.value;
+  }
+}
+
+function parseDesignationsInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function setLeadStatus(text, type = "") {
+  elements.leadStatusPill.textContent = text;
+  elements.leadStatusPill.className = "pill";
+  if (type === "success") elements.leadStatusPill.classList.add("pill-success");
+  if (type === "warning") elements.leadStatusPill.classList.add("pill-warning");
+  if (type === "error") elements.leadStatusPill.classList.add("pill-error");
+}
+
+function renderLeads() {
+  const visibleLeads = state.leadBothContactsOnly
+    ? state.leads.filter((lead) => lead.email && lead.phone)
+    : state.leads;
+
+  elements.leadExportBtn.disabled = !visibleLeads.length;
+  elements.leadSummary.textContent = `${visibleLeads.length} visible leads | ${state.leads.length} total saved`;
+
+  if (!visibleLeads.length) {
+    const hasHiddenLeads = state.leads.length > 0 && state.leadBothContactsOnly;
+    elements.leadTableBody.innerHTML = `
+      <tr>
+        <td colspan="8" class="muted">${hasHiddenLeads ? "No leads with both phone and email. Uncheck the filter to view partial contacts." : "No leads found."}</td>
+      </tr>
+    `;
+    return;
+  }
+
+  elements.leadTableBody.innerHTML = visibleLeads.map((lead) => {
+    const bandClass = lead.valueBand === "High"
+      ? "lead-value-high"
+      : lead.valueBand === "Medium"
+        ? "lead-value-medium"
+        : "lead-value-low";
+
+    return `
+      <tr>
+        <td>${escapeHtml(lead.name || "N/A")}</td>
+        <td>${escapeHtml(lead.organization || "N/A")}</td>
+        <td>${escapeHtml(lead.designation || "N/A")}</td>
+        <td>${escapeHtml(lead.phone || "N/A")}</td>
+        <td>
+          <div class="lead-email-cell">
+            <span>${escapeHtml(lead.email || "N/A")}</span>
+            ${lead.email ? `<button class="lead-copy-btn secondary" type="button" data-email="${escapeHtml(lead.email)}">Copy</button>` : ""}
+          </div>
+        </td>
+        <td>
+          ${lead.linkedinUrl ? `<a href="${escapeHtml(lead.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(lead.linkedinUrl)}</a>` : "N/A"}
+        </td>
+        <td>${escapeHtml(lead.location || "N/A")}</td>
+        <td>
+          <span class="lead-value-badge ${bandClass}">
+            ${escapeHtml(String(lead.contactScore || 0))} | ${escapeHtml(lead.valueBand || "Low")}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+async function onLeadTableClick(event) {
+  const button = event.target.closest("button[data-email]");
+  if (!button) return;
+  const email = button.getAttribute("data-email");
+  if (!email) return;
+
+  try {
+    await navigator.clipboard.writeText(email);
+    const previous = button.textContent;
+    button.textContent = "Copied";
+    setTimeout(() => { button.textContent = previous; }, 900);
+  } catch {
+    alert("Copy failed. Please copy manually.");
+  }
+}
+
+async function searchLeads() {
+  const industry = elements.leadIndustryInput.value.trim();
+  const location = elements.leadCountrySelect.value.trim();
+  const selectedCountryCode = elements.leadCountrySelect.selectedOptions[0]?.dataset?.countryCode || "";
+  const organization = elements.leadOrganizationInput.value.trim();
+  const designations = parseDesignationsInput(elements.leadDesignationsInput.value);
+
+  if (!industry || !location) {
+    alert("Industry and country are required.");
+    return;
+  }
+
+  elements.leadSearchBtn.disabled = true;
+  setLeadStatus("Searching...", "warning");
+  elements.leadSummary.textContent = "Collecting and verifying contacts. Please wait...";
+
+  try {
+    const result = await window.meetingApp.searchLeadsLocal({
+      industry,
+      location,
+      countryCode: selectedCountryCode,
+      organization,
+      designations
+    });
+
+    const leadState = await window.meetingApp.getLeadsState();
+    state.leads = leadState.leads || [];
+    state.leadSearches = leadState.searches || [];
+    renderLeads();
+
+    const debug = result.debug || {};
+    const hasErrors = debug.apiErrors && debug.apiErrors.length > 0;
+    const hasWarnings = debug.apiWarnings && debug.apiWarnings.length > 0;
+
+    if (result.total > 0) {
+      setLeadStatus("Ready", "success");
+    } else if (hasErrors) {
+      setLeadStatus("API Error", "error");
+    } else {
+      setLeadStatus("No Leads", "warning");
+    }
+
+    const sourceCounts = [
+      debug.apolloLeads > 0 ? `Apollo: ${debug.apolloLeads}` : null,
+      debug.pdlLeads > 0 ? `PDL: ${debug.pdlLeads}` : null,
+      debug.hunterLeads > 0 ? `Hunter: ${debug.hunterLeads}` : null,
+      debug.linkedInLeads > 0 ? `LinkedIn: ${debug.linkedInLeads}` : null,
+      debug.emailsGuessed > 0 ? `Emails guessed: ${debug.emailsGuessed}` : null,
+      (!debug.apolloLeads && debug.pagesFetched > 0) ? `Pages scraped: ${debug.pagesFetched}` : null
+    ].filter(Boolean).join(", ");
+
+    const parts = [
+      `Found: ${result.total} leads`,
+      `High: ${result.highValue} · Medium: ${result.mediumValue} · Low: ${result.lowValue}`,
+      debug.apiProvider ? `Sources: ${debug.apiProvider}` : null,
+      sourceCounts || null,
+      hasWarnings ? `Notes: ${debug.apiWarnings.join(" | ")}` : null,
+      hasErrors ? `⚠ Errors: ${debug.apiErrors.join(" | ")}` : null
+    ].filter(Boolean);
+    elements.leadSummary.textContent = parts.join("  |  ");
+  } catch (error) {
+    console.error("Lead search failed:", error);
+    setLeadStatus("Search Failed", "error");
+    elements.leadSummary.textContent = error.message || "Lead discovery failed.";
+    alert(`Lead search failed:\n\n${error.message || "Unknown error"}`);
+  } finally {
+    elements.leadSearchBtn.disabled = false;
+  }
+}
+
+async function exportLeadsCsv() {
+  const visibleLeads = state.leadBothContactsOnly
+    ? state.leads.filter((lead) => lead.email && lead.phone)
+    : state.leads;
+
+  if (!visibleLeads.length) return;
+
+  try {
+    const result = await window.meetingApp.exportLeadsCsv({ leads: visibleLeads });
+    if (result && result.filePath) {
+      setLeadStatus("Exported", "success");
+      elements.leadSummary.textContent = `CSV exported: ${result.count} leads`;
+    }
+  } catch (error) {
+    setLeadStatus("Export Failed", "error");
+    alert(`Could not export CSV:\n\n${error.message || "Unknown error"}`);
+  }
+}
+
+async function clearLeads() {
+  if (!confirm("Clear all saved leads and lead search history?")) return;
+  await window.meetingApp.clearLeads();
+  state.leads = [];
+  state.leadSearches = [];
+  renderLeads();
+  setLeadStatus("Cleared");
+}
+
+function setActiveModule(moduleKey) {
+  const isMeeting = moduleKey !== "leads";
+  const meetingSections = document.querySelectorAll(".module-meeting");
+  const leadSections = document.querySelectorAll(".module-leads");
+
+  meetingSections.forEach((section) => {
+    section.style.display = isMeeting ? "" : "none";
+  });
+  leadSections.forEach((section) => {
+    section.style.display = isMeeting ? "none" : "";
+  });
+
+  elements.meetingModuleTab.classList.toggle("active", isMeeting);
+  elements.leadModuleTab.classList.toggle("active", !isMeeting);
+  elements.meetingModuleTab.setAttribute("aria-selected", isMeeting ? "true" : "false");
+  elements.leadModuleTab.setAttribute("aria-selected", isMeeting ? "false" : "true");
+
+  localStorage.setItem("activeModule", isMeeting ? "meeting" : "leads");
 }
 
 // ===================================================================

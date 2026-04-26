@@ -20,5 +20,11 @@ contextBridge.exposeInMainWorld("meetingApp", {
   onOllamaProgress: (callback) => {
     ipcRenderer.removeAllListeners("ollama:progress");
     ipcRenderer.on("ollama:progress", (_event, data) => callback(data));
-  }
+  },
+
+  // Lead intelligence module
+  searchLeadsLocal: (payload) => ipcRenderer.invoke("leads:searchLocal", payload),
+  getLeadsState: () => ipcRenderer.invoke("leads:getState"),
+  exportLeadsCsv: (payload) => ipcRenderer.invoke("leads:exportCsv", payload),
+  clearLeads: () => ipcRenderer.invoke("leads:clear")
 });

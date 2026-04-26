@@ -155,6 +155,35 @@ h1, h2, h3, p { margin: 0; }
   margin: 4px 0;
 }
 
+.module-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.module-tab {
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.05);
+  color: var(--gray-200);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  text-align: center;
+  transition: all var(--dur) var(--ease);
+}
+
+.module-tab:hover {
+  background: rgba(255,255,255,.1);
+  transform: none;
+}
+
+.module-tab.active {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  color: var(--deep-slate);
+}
+
 .sidebar-section {
   display: flex;
   flex-direction: column;
@@ -639,6 +668,163 @@ textarea {
   margin-top: 3px;
 }
 
+/* --- Lead Intelligence --- */
+.api-settings-group {
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  background: var(--gray-25);
+}
+
+.api-settings-group summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-600);
+  user-select: none;
+  list-style: none;
+}
+
+.api-settings-group summary::-webkit-details-marker { display: none; }
+
+.api-settings-group[open] summary {
+  border-bottom: 1px solid var(--gray-200);
+  color: var(--deep-teal);
+}
+
+.api-settings-body {
+  padding: 14px;
+}
+
+.api-key-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.api-key-input-row input {
+  flex: 1;
+  margin: 0;
+}
+
+button.small {
+  padding: 0 12px;
+  height: 34px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--gray-400);
+  margin-top: 4px;
+}
+
+.field-hint a {
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.field-hint a:hover {
+  text-decoration: underline;
+}
+
+.lead-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lead-toolbar {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lead-table-wrap {
+  margin-top: 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 420px;
+}
+
+.lead-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+  background: var(--white);
+}
+
+.lead-table th,
+.lead-table td {
+  text-align: left;
+  font-size: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: top;
+}
+
+.lead-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--gray-50);
+  color: var(--gray-600);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.lead-value-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.lead-value-high {
+  background: var(--success-bg);
+  color: #067647;
+}
+
+.lead-value-medium {
+  background: var(--warning-bg);
+  color: #93370D;
+}
+
+.lead-value-low {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.lead-email-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lead-copy-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  min-width: auto;
+}
+
 /* --- Animations --- */
 @keyframes fadeInUp {
   from {
@@ -767,6 +953,10 @@ textarea {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lead-form-grid {
     grid-template-columns: 1fr;
   }
 

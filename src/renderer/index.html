@@ -40,6 +40,15 @@
 
         <div class="sidebar-divider"></div>
 
+        <div class="module-tabs" role="tablist" aria-label="Modules">
+          <button id="meetingModuleTab" class="module-tab active" role="tab" aria-selected="true">
+            Meeting Minutes
+          </button>
+          <button id="leadModuleTab" class="module-tab" role="tab" aria-selected="false">
+            Lead Intelligence
+          </button>
+        </div>
+
         <div class="sidebar-section">
           <button id="chooseFolderBtn" class="sidebar-btn">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.25 5.25V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V7.5C15.75 6.67157 15.0784 6 14.25 6H9L7.5 3.75H3.75C2.92157 3.75 2.25 4.42157 2.25 5.25Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -96,13 +105,13 @@
       <section class="content">
 
         <!-- Setup Warning -->
-        <section class="panel setup-warning" id="setupWarning">
+        <section class="panel setup-warning module-meeting" id="setupWarning">
           <h2>Setup Required</h2>
           <p>Choose an audio save folder before creating or recording meetings.</p>
         </section>
 
         <!-- AI Setup -->
-        <section class="panel ai-setup-panel" id="aiSetupPanel" style="display:none">
+        <section class="panel ai-setup-panel module-meeting" id="aiSetupPanel" style="display:none">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">AI Setup</p>
@@ -123,7 +132,7 @@
         </section>
 
         <!-- New Meeting -->
-        <section class="panel">
+        <section class="panel module-meeting">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">New Meeting</p>
@@ -195,7 +204,7 @@
         </section>
 
         <!-- Editor -->
-        <section class="panel">
+        <section class="panel module-meeting">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Editor</p>
@@ -212,7 +221,7 @@
         </section>
 
         <!-- History -->
-        <section class="panel">
+        <section class="panel module-meeting">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">History</p>
@@ -224,6 +233,117 @@
             </button>
           </div>
           <div id="meetingList" class="meeting-list"></div>
+        </section>
+
+        <!-- Lead Intelligence -->
+        <section class="panel module-leads">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Lead Intelligence</p>
+              <h2>Contact-first B2B leads</h2>
+            </div>
+            <span id="leadStatusPill" class="pill">Idle</span>
+          </div>
+
+          <details class="api-settings-group">
+            <summary>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:6px;vertical-align:-2px"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3.5a.875.875 0 110 1.75A.875.875 0 018 4.5zM7 7.5h2v4H7v-4z" fill="currentColor"/></svg>
+              API Settings — required for real contact data
+            </summary>
+            <div class="api-settings-body">
+              <p class="muted" style="margin:0 0 12px">Connect a B2B data API to get real decision-maker contacts. Web scraping alone cannot reliably find phone numbers and emails.</p>
+              <div class="api-key-row">
+                <label style="flex:1">
+                  Apollo.io API Key
+                  <div class="api-key-input-row">
+                    <input id="apolloApiKeyInput" type="password" placeholder="Paste your Apollo.io API key" autocomplete="off" />
+                    <button id="apolloApiKeySaveBtn" class="secondary small">Save</button>
+                  </div>
+                  <span class="field-hint">Free: 50 email credits/month · 260M+ contacts — <a href="https://app.apollo.io/#/settings/integrations/api" target="_blank">Get key</a></span>
+                </label>
+                <label style="flex:1">
+                  People Data Labs API Key
+                  <div class="api-key-input-row">
+                    <input id="pdlApiKeyInput" type="password" placeholder="Paste your PDL API key" autocomplete="off" />
+                    <button id="pdlApiKeySaveBtn" class="secondary small">Save</button>
+                  </div>
+                  <span class="field-hint">Free: 100 searches/month · different DB from Apollo — <a href="https://dashboard.peopledatalabs.com/api-key" target="_blank">Get key</a></span>
+                </label>
+                <label style="flex:1">
+                  Hunter.io API Key
+                  <div class="api-key-input-row">
+                    <input id="hunterApiKeyInput" type="password" placeholder="Paste your Hunter.io API key" autocomplete="off" />
+                    <button id="hunterApiKeySaveBtn" class="secondary small">Save</button>
+                  </div>
+                  <span class="field-hint">Free: 25 domain searches/month · email by domain — <a href="https://hunter.io/api-keys" target="_blank">Get key</a></span>
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <div class="lead-form-grid">
+            <label>
+              Industry
+              <input id="leadIndustryInput" placeholder="FMCG" />
+            </label>
+            <label>
+              Country
+              <select id="leadCountrySelect"></select>
+            </label>
+            <label>
+              Organization (optional)
+              <input id="leadOrganizationInput" placeholder="PRAN-RFL Group" />
+            </label>
+            <label>
+              Designation (optional, comma separated)
+              <input id="leadDesignationsInput" placeholder="CEO, Marketing Head" />
+            </label>
+          </div>
+
+          <div class="button-row" style="margin-top: 16px;">
+            <button id="leadSearchBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.2 11.2L14 14M12.8 7.4A5.4 5.4 0 112 7.4a5.4 5.4 0 0110.8 0z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Find Leads
+            </button>
+            <button id="leadExportBtn" class="secondary" disabled>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 11v1.5a1.5 1.5 0 001.5 1.5h7a1.5 1.5 0 001.5-1.5V11M11 7.5L8 10.5M8 10.5L5 7.5M8 10.5V3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Export Leads CSV
+            </button>
+            <button id="leadClearBtn" class="secondary">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4H14M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M3 4H13V13C13 13.5523 12.5523 14 12 14H4C3.44772 14 3 13.5523 3 13V4Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Clear Leads
+            </button>
+          </div>
+
+          <div class="lead-toolbar">
+            <label class="check-row">
+              <input id="leadBothContactsOnlyInput" type="checkbox" checked />
+              Show only leads with both phone and email
+            </label>
+            <p id="leadSummary" class="muted">No leads yet.</p>
+          </div>
+
+          <div class="lead-table-wrap">
+            <table class="lead-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Organization</th>
+                  <th>Designation</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>LinkedIn URL</th>
+                  <th>Location</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="leadTableBody">
+                <tr>
+                  <td colspan="8" class="muted">No leads found.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
       </section>
