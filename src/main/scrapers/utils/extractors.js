@@ -1,155 +1,79 @@
 /**
  * Data-extraction helpers: query building, DOM scraping, title parsing, lead construction.
+ * Supports multi-platform: LinkedIn → Instagram → Facebook with aggressive email targeting.
  */
 
 const { extractEmails, extractPhones } = require("../emailExtractor");
 
-// ─── Query Mode Constants ─────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const QUERY_MODE = { SAFE: "safe", AGGRESSIVE: "aggressive" };
 
 const EMAIL_DOMAINS = [
   "@gmail.com", "@yahoo.com", "@hotmail.com",
-  "@outlook.com", "@icloud.com", "@protonmail.com"
+  "@outlook.com", "@icloud.com"
 ];
 
-// Common synonyms for query rotation (reduces fingerprinting)
+// Mandatory email OR clause for aggressive targeting
+const EMAIL_OR_CLAUSE = `(${EMAIL_DOMAINS.map(d => `"${d}"`).join(" OR ")})`;
+
+const PLATFORM_FILTERS = {
+  linkedin:  "linkedin.com/in",
+  instagram: "instagram.com",
+  facebook:  "facebook.com"
+};
+
 const DESIGNATION_SYNONYMS = {
-  "ceo": ["CEO", "Chief Executive Officer", "Managing Director"],
-  "cto": ["CTO", "Chief Technology Officer", "VP Engineering"],
-  "cfo": ["CFO", "Chief Financial Officer", "Finance Director"],
-  "cmo": ["CMO", "Chief Marketing Officer", "Marketing Director"],
-  "director": ["Director", "Head", "VP"],
-  "manager": ["Manager", "Lead", "Senior Manager"],
-  "founder": ["Founder", "Co-Founder", "Owner"],
+  "ceo":            ["CEO", "Chief Executive Officer", "Managing Director"],
+  "cto":            ["CTO", "Chief Technology Officer", "VP Engineering"],
+  "cfo":            ["CFO", "Chief Financial Officer", "Finance Director"],
+  "cmo":            ["CMO", "Chief Marketing Officer", "Marketing Director"],
+  "director":       ["Director", "Head", "VP"],
+  "manager":        ["Manager", "Lead", "Senior Manager"],
+  "founder":        ["Founder", "Co-Founder", "Owner"],
   "marketing head": ["Marketing Head", "Head of Marketing", "Marketing Director"]
 };
 
-// ─── Dual-Mode Query Builder ──────────────────────────────────────────────────
+// ─── Platform Query Builder ───────────────────────────────────────────────────
 
 /**
- * Build search queries in SAFE or AGGRESSIVE mode.
- *
- * SAFE (default):
- *   - site:linkedin.com/in only
- *   - No email domain operators
- *   - Generates 4–6 query variations
- *
- * AGGRESSIVE:
- *   - Adds "@gmail.com" OR "@yahoo.com" etc. for direct email harvesting
- *   - Higher yield but triggers CAPTCHA faster
- *   - Generates 6–10 query variations
- *
- * @param {string} designation  — Target role (e.g. "CEO")
- * @param {string} area         — City/region (e.g. "Dhaka")
- * @param {string} industry     — Industry (e.g. "FMCG")
- * @param {string} country      — Country (e.g. "Bangladesh")
- * @param {string} mode         — "safe" or "aggressive"
- * @returns {string[]} Array of search query strings
+ * Build queries for a single platform (site filter).
+ * SAFE:       site filter + keywords, no email operators
+ * AGGRESSIVE: + mandatory email OR clause for direct email harvesting
  */
-function buildQueries(designation, area, industry, country, mode = QUERY_MODE.SAFE) {
+function buildPlatformQueries(siteFilter, designation, area, industry, country, mode) {
   const queries = [];
   const isAggressive = mode === QUERY_MODE.AGGRESSIVE;
+  const variants = getDesignationVariants(designation);
 
-  // Get synonym variations for designation rotation
-  const designationVariants = getDesignationVariants(designation);
-
-  // ── SAFE QUERIES (always generated) ─────────────────────────────────────
-
-  // Variation 1: Full LinkedIn site-search with area
+  // Query 1: clean — no email filter. Runs first so we always get baseline results.
   if (area) {
-    const p = ["site:linkedin.com/in"];
+    const p = [`site:${siteFilter}`];
     if (designation) p.push(`"${designation}"`);
-    if (industry) p.push(`"${industry}"`);
+    if (industry)    p.push(`"${industry}"`);
     p.push(`"${area}"`);
-    if (country) p.push(`"${country}"`);
+    if (country)     p.push(`"${country}"`);
     queries.push(p.join(" "));
   }
 
-  // Variation 2: LinkedIn site-search country-wide
+  // Query 2: clean — country-wide, no email filter.
   {
-    const p = ["site:linkedin.com/in"];
+    const p = [`site:${siteFilter}`];
     if (designation) p.push(`"${designation}"`);
-    if (industry) p.push(`"${industry}"`);
-    if (country) p.push(`"${country}"`);
+    if (industry)    p.push(`"${industry}"`);
+    if (country)     p.push(`"${country}"`);
     queries.push(p.join(" "));
   }
 
-  // Variation 3: Natural language with "linkedin" keyword
-  {
-    const p = [];
-    if (designation) p.push(`"${designation}"`);
+  // Query 3: OR-grouped synonyms + email filter only in aggressive mode.
+  // Placed last so clean queries always execute first.
+  if (variants.length > 1) {
+    const orGroup = variants.map(d => `"${d}"`).join(" OR ");
+    const p = [`site:${siteFilter} (${orGroup})`];
     if (industry) p.push(`"${industry}"`);
-    if (area) p.push(`"${area}"`);
-    else if (country) p.push(`"${country}"`);
-    p.push("linkedin");
+    if (country)  p.push(`"${country}"`);
+    if (isAggressive) p.push(EMAIL_OR_CLAUSE);
     queries.push(p.join(" "));
-  }
-
-  // Variation 4: Contact-oriented search
-  {
-    const p = [];
-    if (designation) p.push(`"${designation}"`);
-    if (industry) p.push(`"${industry}"`);
-    if (country) p.push(`"${country}"`);
-    p.push("email contact");
-    queries.push(p.join(" "));
-  }
-
-  // Variation 5: OR-grouped designation synonyms (query rotation)
-  if (designationVariants.length > 1) {
-    const orGroup = designationVariants.map(d => `"${d}"`).join(" OR ");
-    const p = [`site:linkedin.com/in (${orGroup})`];
-    if (industry) p.push(`"${industry}"`);
-    if (country) p.push(`"${country}"`);
-    queries.push(p.join(" "));
-  }
-
-  // ── AGGRESSIVE QUERIES (only in aggressive mode) ────────────────────────
-
-  if (isAggressive) {
-    const emailOr = EMAIL_DOMAINS.slice(0, 3).map(d => `"${d}"`).join(" OR ");
-
-    // Variation A1: LinkedIn + email domains
-    {
-      const p = ["site:linkedin.com/in"];
-      if (designation) p.push(`"${designation}"`);
-      if (industry) p.push(`"${industry}"`);
-      if (country) p.push(`"${country}"`);
-      p.push(emailOr);
-      queries.push(p.join(" "));
-    }
-
-    // Variation A2: Open web email harvest (no site: restriction)
-    {
-      const p = [];
-      if (designation) p.push(`"${designation}"`);
-      if (industry) p.push(`"${industry}"`);
-      if (country) p.push(`"${country}"`);
-      p.push(emailOr);
-      p.push("contact");
-      queries.push(p.join(" "));
-    }
-
-    // Variation A3: With area + email domains
-    if (area) {
-      const p = [];
-      if (designation) p.push(`"${designation}"`);
-      if (industry) p.push(`"${industry}"`);
-      p.push(`"${area}"`);
-      p.push(emailOr);
-      queries.push(p.join(" "));
-    }
-
-    // Variation A4: OR-grouped designations + email domains
-    if (designationVariants.length > 1) {
-      const orGroup = designationVariants.map(d => `"${d}"`).join(" OR ");
-      const p = [`(${orGroup})`];
-      if (industry) p.push(`"${industry}"`);
-      if (country) p.push(`"${country}"`);
-      p.push(emailOr);
-      queries.push(p.join(" "));
-    }
   }
 
   // Deduplicate
@@ -163,38 +87,152 @@ function buildQueries(designation, area, industry, country, mode = QUERY_MODE.SA
 }
 
 /**
+ * Build grouped queries for all platforms.
+ *
+ * @returns {{ linkedin: string[], instagram: string[], facebook: string[] }}
+ */
+function buildQueries(designation, area, industry, country, mode = QUERY_MODE.SAFE) {
+  const grouped = {};
+  for (const [platform, siteFilter] of Object.entries(PLATFORM_FILTERS)) {
+    grouped[platform] = buildPlatformQueries(siteFilter, designation, area, industry, country, mode);
+  }
+  return grouped;
+}
+
+/**
  * Get synonym variants for a designation to enable query rotation.
  */
 function getDesignationVariants(designation) {
   if (!designation) return [];
   const key = designation.toLowerCase().trim();
-  const synonyms = DESIGNATION_SYNONYMS[key];
-  if (synonyms) return synonyms;
-  return [designation]; // No synonyms found, return as-is
+  return DESIGNATION_SYNONYMS[key] || [designation];
 }
 
 /**
  * Returns mode-specific scraping configuration.
  * SAFE:       up to 15 pages/query, 2–5s delay
- * AGGRESSIVE: up to 4 pages/query, 5–10s delay (higher CAPTCHA risk)
+ * AGGRESSIVE: up to 4 pages/query, 5–10s delay
  */
 function getQueryConfig(mode = QUERY_MODE.SAFE) {
   if (mode === QUERY_MODE.AGGRESSIVE) {
-    return {
-      maxPagesPerQuery: 4,
-      minDelay: 5000,
-      maxDelay: 10000,
-      mode: QUERY_MODE.AGGRESSIVE
-    };
+    return { maxPagesPerQuery: 4,  minDelay: 5000,  maxDelay: 10000, mode: QUERY_MODE.AGGRESSIVE };
   }
-  return {
-    maxPagesPerQuery: 15,
-    minDelay: 2000,
-    maxDelay: 5000,
-    mode: QUERY_MODE.SAFE
-  };
+  return   { maxPagesPerQuery: 15, minDelay: 2000,  maxDelay: 5000,  mode: QUERY_MODE.SAFE };
 }
 
+// ─── DOM Extraction ───────────────────────────────────────────────────────────
+
+/**
+ * Extract { title, link, snippet } from any Google SERP page.
+ *
+ * Three-strategy approach so a Google layout change can never produce 0 results:
+ *
+ *   S1. h3 inside anchor — layout-agnostic. Google ALWAYS renders result titles
+ *       as <h3> elements inside a clickable <a>. Works across every known layout.
+ *
+ *   S2. Classic div.g / .tF2Cxc containers — keeps working if S1 misses any.
+ *
+ *   S3. Platform-URL link scan — last resort. Scans every <a href> on the page
+ *       and keeps only links matching linkedin/instagram/facebook. Guarantees
+ *       we never return 0 results from a page that has target-platform links.
+ *
+ * Debug metrics are returned to Node.js and logged via console.log (not inside
+ * page.evaluate, so they appear in the Electron/Node terminal).
+ */
+async function extractResultsFromPage(page) {
+  const { items, debug } = await page.evaluate(() => {
+    const items = [];
+    const seen  = new Set();
+
+    // ── Debug counters (returned to Node.js, not logged here) ────────────
+    const htmlLength = document.documentElement.innerHTML.length;
+    const linksFound = document.querySelectorAll("a[href]").length;
+
+    // ── Snippet extraction ─────────────────────────────────────────────────
+    function getSnippet(el) {
+      if (!el) return "";
+      const SNIPPET_SELS = [
+        ".VwiC3b", ".lEBKkf", ".IsZvec", ".yXK7lf", ".s3v9rd",
+        "[data-sncf]", ".r025kc", ".hgKElc", ".MU70pf", ".Uo8X3b",
+        ".ITZIwc", ".x54gtf", ".st"
+      ];
+      for (const s of SNIPPET_SELS) {
+        const node = el.querySelector(s);
+        if (node && node.textContent.trim().length > 20) return node.textContent.trim();
+      }
+      // Generic: deepest single-line-ish text block
+      const candidates = Array.from(el.querySelectorAll("div, span"))
+        .filter(n => n.children.length < 4 && n.textContent.trim().length > 40)
+        .sort((a, b) => b.textContent.length - a.textContent.length);
+      return candidates[0]
+        ? candidates[0].textContent.trim().slice(0, 400)
+        : (el.textContent || "").slice(0, 300).trim();
+    }
+
+    function addItem(rawHref, titleText, container) {
+      const href = (rawHref || "").split("?")[0].split("#")[0];
+      if (!href.startsWith("http") || seen.has(href)) return;
+      // Skip Google-internal navigation links
+      if (href.includes("google.com/search") ||
+          href.includes("accounts.google.com") ||
+          href.includes("google.com/intl")) return;
+      seen.add(href);
+      items.push({ title: (titleText || "").trim(), link: href, snippet: getSnippet(container) });
+    }
+
+    // ── Strategy 1: <a> → <h3> — primary, layout-agnostic ────────────────
+    document.querySelectorAll("h3").forEach(h3 => {
+      const anchor = h3.closest("a");
+      if (!anchor || !anchor.href) return;
+      const container =
+        h3.closest("div.g, .tF2Cxc, .MjjYGa, [data-sokoban-container], [jscontroller]") ||
+        anchor.closest("div.g, [jscontroller]") ||
+        anchor.parentElement?.parentElement?.parentElement;
+      addItem(anchor.href, h3.textContent, container);
+    });
+
+    // ── Strategy 2: classic div.g / .tF2Cxc containers ───────────────────
+    document.querySelectorAll("div.g, .tF2Cxc, .MjjYGa").forEach(container => {
+      const anchor = container.querySelector('a[href^="http"]');
+      if (!anchor) return;
+      const h3 = container.querySelector("h3");
+      if (!h3) return;
+      addItem(anchor.href, h3.textContent, container);
+    });
+
+    // ── Strategy 3: platform-URL fallback scan ────────────────────────────
+    // Only runs if S1+S2 found fewer than 3 results.
+    if (items.length < 3) {
+      const TARGETS = ["linkedin.com/in/", "instagram.com/", "facebook.com/"];
+      document.querySelectorAll("a[href]").forEach(anchor => {
+        const href = anchor.href || "";
+        if (!TARGETS.some(t => href.includes(t))) return;
+        const h3 = anchor.querySelector("h3") ||
+                   anchor.closest("[jscontroller]")?.querySelector("h3") ||
+                   anchor.parentElement?.querySelector("h3");
+        const title     = h3?.textContent || anchor.textContent || href;
+        const container = anchor.closest("div.g, [jscontroller]") ||
+                          anchor.parentElement?.parentElement;
+        addItem(href, title, container);
+      });
+    }
+
+    return { items, debug: { htmlLength, linksFound, resultsParsed: items.length } };
+  });
+
+  // Surface extraction diagnostics to Node.js terminal
+  console.log("HTML LENGTH:", debug.htmlLength);
+  console.log("LINKS FOUND:", debug.linksFound);
+  console.log("RESULTS PARSED:", debug.resultsParsed);
+
+  return items;
+}
+
+// ─── Title Parsers ────────────────────────────────────────────────────────────
+
+/**
+ * Parse a LinkedIn-style title: "Name - Designation - Company | LinkedIn"
+ */
 function parseLinkedInTitle(title) {
   const clean = String(title || "").replace(/\s+/g, " ").trim();
 
@@ -208,13 +246,13 @@ function parseLinkedInTitle(title) {
   );
   if (mB) return { name: mB[1].trim(), designation: mB[2].trim(), organization: "" };
 
-  const mC2 = clean.match(
+  const mC = clean.match(
     /^([A-Z][a-z'.‑\-]+(?:\s+[A-Z][a-z'.‑\-]+){1,3})\s*[-–|]\s*(.+?)\s+at\s+(.+?)(?:\s*[-–|]\s*LinkedIn)?$/i
   );
-  if (mC2) return { name: mC2[1].trim(), designation: mC2[2].trim(), organization: mC2[3].trim() };
+  if (mC) return { name: mC[1].trim(), designation: mC[2].trim(), organization: mC[3].trim() };
 
-  const mC = clean.match(/^([A-Z][a-z'.‑\-]+(?:\s+[A-Z][a-z'.‑\-]+){1,3})\s*[-–]/i);
-  if (mC) return { name: mC[1].trim(), designation: "", organization: "" };
+  const mD = clean.match(/^([A-Z][a-z'.‑\-]+(?:\s+[A-Z][a-z'.‑\-]+){1,3})\s*[-–]/i);
+  if (mD) return { name: mD[1].trim(), designation: "", organization: "" };
 
   const mE = clean.match(/^([A-Z][a-z'.]+(?:\s+[A-Z][a-z'.]+){1,3})/);
   if (mE && clean.toLowerCase().includes("linkedin")) {
@@ -224,94 +262,97 @@ function parseLinkedInTitle(title) {
   return null;
 }
 
-async function extractResultsFromPage(page) {
-  return page.evaluate(() => {
-    const items = [];
-    const seen = new Set();
+/**
+ * Generic title parser for Instagram / Facebook / other results.
+ * Attempts to extract a name from the beginning of the title string.
+ */
+function parseGenericTitle(title) {
+  const clean = String(title || "").replace(/\s+/g, " ").trim();
+  if (!clean) return { name: "Unknown", designation: "", organization: "" };
 
-    function getSnippet(container) {
-      // Extensive list of selectors for Google snippets across various layouts
-      const sels = [
-        ".VwiC3b", ".lEBKkf", ".IsZvec", ".yXK7lf", ".s3v9rd", 
-        "[data-sncf='1']", ".r025kc", ".hgKElc", ".MU70pf", ".Uo8X3b"
-      ];
-      for (const s of sels) {
-        const el = container.querySelector(s);
-        if (el && el.textContent.trim().length > 10) return el.textContent;
-      }
-      // Fallback: look for any div/span that has a decent amount of text
-      const fallback = Array.from(container.querySelectorAll('div, span'))
-        .find(el => el.textContent.trim().length > 30);
-      return fallback ? fallback.textContent : (container.textContent || "").slice(0, 600);
-    }
+  // Capitalized name at start
+  const mName = clean.match(/^([A-Z][a-z'.‑\-]+(?:\s+[A-Z][a-z'.‑\-]+){1,3})/);
+  if (mName) {
+    const rest = clean.slice(mName[1].length).replace(/^[\s\-–|]+/, "");
+    const parts = rest.split(/[-–|]/);
+    return {
+      name:         mName[1].trim(),
+      designation:  (parts[0] || "").trim(),
+      organization: (parts[1] || "").trim()
+    };
+  }
 
-    // High priority: Specific LinkedIn result structures
-    const containers = document.querySelectorAll('div.g, .tF2Cxc, .MjjYGa, .sr__card');
-    
-    containers.forEach(container => {
-      const link = container.querySelector('a[href*="linkedin.com/in/"]');
-      if (!link) return;
-
-      const href = (link.href || "").split("?")[0].split("#")[0];
-      if (seen.has(href)) return;
-
-      const h3 = container.querySelector("h3");
-      if (!h3) return;
-
-      seen.add(href);
-      items.push({ 
-        title: h3.textContent || "", 
-        url: href, 
-        snippet: getSnippet(container) 
-      });
-    });
-
-    // Fallback: any link to linkedin.com/in/ that wasn't caught by containers
-    if (items.length < 5) {
-      document.querySelectorAll('a[href*="linkedin.com/in/"]').forEach(link => {
-        const href = (link.href || "").split("?")[0].split("#")[0];
-        if (seen.has(href)) return;
-
-        const h3 = link.querySelector("h3") || link.parentElement?.querySelector("h3") || link.closest('div')?.querySelector('h3');
-        if (!h3) return;
-
-        const container = link.closest('div.g') || link.parentElement?.parentElement?.parentElement;
-        
-        seen.add(href);
-        items.push({ 
-          title: h3.textContent || "", 
-          url: href, 
-          snippet: container ? getSnippet(container) : "" 
-        });
-      });
-    }
-
-    return items;
-  });
-}
-
-function buildLeadFromResult(result, input, fallbackDesignation) {
-  const parsed = parseLinkedInTitle(result.title);
-  if (!parsed) return null;
-
-  const text = `${result.snippet} ${result.title}`;
-  const emails = extractEmails(text);
-  const phones = extractPhones(text);
-
+  // Fallback: first segment before separator
+  const parts = clean.split(/[-–|]/);
   return {
-    id: `gs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: parsed.name,
-    designation: parsed.designation || fallbackDesignation || "",
-    organization: parsed.organization || "",
-    industry: input.industry || "",
-    location: input.location || "",
-    area: input.area || "",
-    email: emails[0] || "",
-    phone: phones[0] || "",
-    linkedinUrl: result.url,
-    source: "Google/LinkedIn",
-    createdAt: new Date().toISOString()
+    name:         (parts[0] || clean).slice(0, 60).trim() || "Unknown",
+    designation:  (parts[1] || "").trim(),
+    organization: (parts[2] || "").trim()
   };
 }
 
-module.exports = { QUERY_MODE, buildQueries, getQueryConfig, getDesignationVariants, parseLinkedInTitle, extractResultsFromPage, buildLeadFromResult };
+// ─── Platform Detection ───────────────────────────────────────────────────────
+
+function detectPlatform(url) {
+  if (!url) return "web";
+  if (url.includes("linkedin.com"))  return "linkedin";
+  if (url.includes("instagram.com")) return "instagram";
+  if (url.includes("facebook.com"))  return "facebook";
+  return "web";
+}
+
+// ─── Lead Builder ─────────────────────────────────────────────────────────────
+
+/**
+ * Build a lead object from a search result.
+ * NEVER returns null — always returns a partial lead with whatever data is available.
+ */
+function buildLeadFromResult(result, input, fallbackDesignation) {
+  const url      = result.link || result.url || "";
+  const platform = detectPlatform(url);
+
+  let parsed;
+  if (platform === "linkedin") {
+    parsed = parseLinkedInTitle(result.title) || parseGenericTitle(result.title);
+  } else {
+    parsed = parseGenericTitle(result.title);
+  }
+
+  const text   = `${result.snippet || ""} ${result.title || ""}`;
+  const emails = extractEmails(text);
+  const phones = extractPhones(text);
+
+  const lead = {
+    id:           `gs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name:         parsed.name         || "Unknown",
+    designation:  parsed.designation  || fallbackDesignation || "",
+    organization: parsed.organization || "",
+    industry:     input.industry      || "",
+    location:     input.location      || "",
+    area:         input.area          || "",
+    email:        emails[0]           || "",
+    phone:        phones[0]           || "",
+    profileUrl:   url,
+    linkedinUrl:  platform === "linkedin" ? url : "",
+    source:       platform,
+    createdAt:    new Date().toISOString()
+  };
+
+  return lead;
+}
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
+
+module.exports = {
+  QUERY_MODE,
+  PLATFORM_FILTERS,
+  buildQueries,
+  buildPlatformQueries,
+  getQueryConfig,
+  getDesignationVariants,
+  parseLinkedInTitle,
+  parseGenericTitle,
+  detectPlatform,
+  extractResultsFromPage,
+  buildLeadFromResult
+};

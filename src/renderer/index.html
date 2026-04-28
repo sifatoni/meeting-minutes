@@ -273,6 +273,36 @@
                 <option value="safe">Safe — LinkedIn profiles only</option>
               </select>
             </label>
+
+            <!-- Page Range — spans both columns -->
+            <div class="lead-page-range-row">
+              <div class="page-mode-header">
+                <span class="page-mode-label">Page Range</span>
+                <div class="page-mode-toggle" role="group" aria-label="Page range mode">
+                  <label class="page-mode-btn">
+                    <input type="radio" name="leadPageMode" id="leadPageModeAuto" value="auto" checked />
+                    <span>Smart Mode</span>
+                  </label>
+                  <label class="page-mode-btn">
+                    <input type="radio" name="leadPageMode" id="leadPageModeCustom" value="custom" />
+                    <span>Custom Range</span>
+                  </label>
+                </div>
+              </div>
+              <div class="page-range-inputs" id="leadPageRangeInputs">
+                <label>
+                  Start Page
+                  <input type="number" id="leadStartPageInput" min="1" max="999" value="1" />
+                </label>
+                <label>
+                  End Page
+                  <input type="number" id="leadEndPageInput" min="1" max="999" value="5" />
+                </label>
+                <p class="page-range-hint">
+                  Max 10-page range per query &nbsp;·&nbsp; Page 1 = results 1–10, page 2 = 11–20…
+                </p>
+              </div>
+            </div>
           </div>
 
           <div class="button-row" style="margin-top: 16px;">
@@ -295,10 +325,16 @@
           </div>
 
           <div class="lead-toolbar">
-            <label class="check-row">
-              <input id="leadBothContactsOnlyInput" type="checkbox" />
-              Show only leads with both phone and email
-            </label>
+            <div class="lead-contact-filter">
+              <label class="check-row">
+                <input id="leadFilterAnyInput" type="checkbox" />
+                Has phone or email
+              </label>
+              <label class="check-row">
+                <input id="leadFilterBothInput" type="checkbox" />
+                Has both phone and email
+              </label>
+            </div>
             <label class="check-row">
               <input id="leadDebugModeInput" type="checkbox" />
               Debug view (source · raw score breakdown)

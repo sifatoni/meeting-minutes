@@ -16,7 +16,8 @@ const state = {
   latestMinutes: null,
   leads: [],
   leadSearches: [],
-  leadBothContactsOnly: false,
+  leadFilterAny: false,
+  leadFilterBoth: false,
   leadDebugMode: false
 };
 
@@ -76,8 +77,14 @@ const elements = {
   leadCancelBtn: document.getElementById("leadCancelBtn"),
   leadExportBtn: document.getElementById("leadExportBtn"),
   leadClearBtn: document.getElementById("leadClearBtn"),
-  leadBothContactsOnlyInput: document.getElementById("leadBothContactsOnlyInput"),
+  leadFilterAnyInput: document.getElementById("leadFilterAnyInput"),
+  leadFilterBothInput: document.getElementById("leadFilterBothInput"),
   leadQueryModeSelect: document.getElementById("leadQueryModeSelect"),
+  leadPageModeAuto: document.getElementById("leadPageModeAuto"),
+  leadPageModeCustom: document.getElementById("leadPageModeCustom"),
+  leadPageRangeInputs: document.getElementById("leadPageRangeInputs"),
+  leadStartPageInput: document.getElementById("leadStartPageInput"),
+  leadEndPageInput: document.getElementById("leadEndPageInput"),
   leadDebugModeInput: document.getElementById("leadDebugModeInput"),
   leadTable: document.getElementById("leadTable"),
   leadSummary: document.getElementById("leadSummary"),
@@ -115,9 +122,51 @@ elements.leadClearBtn.addEventListener("click", clearLeads);
 elements.meetingModuleTab.addEventListener("click", () => setActiveModule("meeting"));
 elements.leadModuleTab.addEventListener("click", () => setActiveModule("leads"));
 elements.leadTableBody.addEventListener("click", onLeadTableClick);
-elements.leadBothContactsOnlyInput.addEventListener("change", () => {
-  state.leadBothContactsOnly = elements.leadBothContactsOnlyInput.checked;
+elements.leadFilterAnyInput.addEventListener("change", () => {
+  state.leadFilterAny = elements.leadFilterAnyInput.checked;
+  // Unchecking "any" must also uncheck the stricter "both"
+  if (!state.leadFilterAny) {
+    state.leadFilterBoth = false;
+    elements.leadFilterBothInput.checked = false;
+  }
   renderLeads();
+});
+
+elements.leadFilterBothInput.addEventListener("change", () => {
+  state.leadFilterBoth = elements.leadFilterBothInput.checked;
+  // Checking "both" implies "any" — keep parent in sync
+  if (state.leadFilterBoth) {
+    state.leadFilterAny = true;
+    elements.leadFilterAnyInput.checked = true;
+  }
+  renderLeads();
+});
+
+// Page-range mode toggle: show/hide custom inputs
+document.querySelectorAll('input[name="leadPageMode"]').forEach(radio => {
+  radio.addEventListener("change", () => {
+    const isCustom = elements.leadPageModeCustom.checked;
+    elements.leadPageRangeInputs.classList.toggle("visible", isCustom);
+  });
+});
+
+// Auto-swap & clamp end page when user blurs either number input
+elements.leadEndPageInput.addEventListener("change", () => {
+  let start = parseInt(elements.leadStartPageInput.value, 10) || 1;
+  let end   = parseInt(elements.leadEndPageInput.value,   10) || start;
+  if (end < start) { [start, end] = [end, start]; }
+  if (end - start + 1 > 10) end = start + 9;
+  elements.leadStartPageInput.value = start;
+  elements.leadEndPageInput.value   = end;
+});
+
+elements.leadStartPageInput.addEventListener("change", () => {
+  let start = Math.max(1, parseInt(elements.leadStartPageInput.value, 10) || 1);
+  let end   = parseInt(elements.leadEndPageInput.value, 10) || start + 4;
+  if (end < start) end = start + 4;
+  if (end - start + 1 > 10) end = start + 9;
+  elements.leadStartPageInput.value = start;
+  elements.leadEndPageInput.value   = end;
 });
 
 elements.leadDebugModeInput.addEventListener("change", () => {
@@ -754,19 +803,51 @@ function setLeadStatus(text, type = "") {
   if (type === "error") elements.leadStatusPill.classList.add("pill-error");
 }
 
+// ── Contact value helpers ─────────────────────────────────────────────────────
+// Treats blank, dash, em-dash, N/A as "no value" so filters aren't fooled
+// by placeholder strings that scrapers sometimes emit.
+const EMPTY_VALUES = new Set(["", "-", "—", "–", "n/a", "na", "none", "null", "undefined"]);
+
+function hasValidEmail(lead) {
+  return Boolean(lead.email) && !EMPTY_VALUES.has(lead.email.trim().toLowerCase());
+}
+
+function hasValidPhone(lead) {
+  return Boolean(lead.phone) && !EMPTY_VALUES.has(lead.phone.trim().toLowerCase());
+}
+
+/**
+ * Apply the active contact filter to a leads array.
+ * Priority: both > any > none
+ *   leadFilterBoth → email AND phone must be present
+ *   leadFilterAny  → email OR  phone must be present
+ *   neither        → no filter, return all
+ */
+function applyContactFilter(leads) {
+  if (state.leadFilterBoth) return leads.filter(l => hasValidEmail(l) && hasValidPhone(l));
+  if (state.leadFilterAny)  return leads.filter(l => hasValidEmail(l) || hasValidPhone(l));
+  return leads;
+}
+
 function renderLeads() {
-  const visibleLeads = state.leadBothContactsOnly
-    ? state.leads.filter((lead) => lead.email && lead.phone)
-    : state.leads;
+  const visibleLeads = applyContactFilter(state.leads);
+  const filtered     = visibleLeads.length < state.leads.length;
 
   elements.leadExportBtn.disabled = !visibleLeads.length;
-  elements.leadSummary.textContent = `${visibleLeads.length} visible leads | ${state.leads.length} total saved`;
+  elements.leadSummary.textContent = filtered
+    ? `${visibleLeads.length} visible leads (filtered) | ${state.leads.length} total`
+    : `${visibleLeads.length} leads`;
 
   if (!visibleLeads.length) {
-    const hasHiddenLeads = state.leads.length > 0 && state.leadBothContactsOnly;
+    let emptyMsg = "No leads found.";
+    if (filtered && state.leadFilterBoth) {
+      emptyMsg = "No leads have both phone and email. Try the weaker filter or clear filters.";
+    } else if (filtered && state.leadFilterAny) {
+      emptyMsg = "No leads have a phone or email. Clear the filter to see all contacts.";
+    }
     elements.leadTableBody.innerHTML = `
       <tr>
-        <td colspan="9" class="muted">${hasHiddenLeads ? "No leads with both phone and email. Uncheck the filter to view partial contacts." : "No leads found."}</td>
+        <td colspan="9" class="muted">${emptyMsg}</td>
       </tr>
     `;
     return;
@@ -932,9 +1013,19 @@ async function searchLeads() {
   elements.leadSummary.textContent = "Starting search — this may take 3–5 minutes...";
 
   try {
-    const queryMode = elements.leadQueryModeSelect?.value || "aggressive";
-    console.log(`[UI] Starting search — mode: ${queryMode}, designations: ${JSON.stringify(designations)}`);
-    await window.meetingApp.searchLeads({ industry, location, area, organization, designations, queryMode });
+    const queryMode  = elements.leadQueryModeSelect?.value || "aggressive";
+    const isCustom   = elements.leadPageModeCustom?.checked;
+
+    // Only pass page params when Custom Range is active; let backend use smart mode otherwise
+    const startPage  = isCustom ? (parseInt(elements.leadStartPageInput?.value, 10) || 1)         : undefined;
+    const endPage    = isCustom ? (parseInt(elements.leadEndPageInput?.value,   10) || undefined)  : undefined;
+
+    const pageModeLabel = isCustom
+      ? `pages ${startPage}–${endPage ?? "auto"}`
+      : "smart mode";
+
+    console.log(`[UI] Starting search — mode: ${queryMode}, pages: ${pageModeLabel}, designations: ${JSON.stringify(designations)}`);
+    await window.meetingApp.searchLeads({ industry, location, area, organization, designations, queryMode, startPage, endPage });
   } catch (error) {
     elements.leadSearchBtn.disabled = false;
     elements.leadCancelBtn.style.display = "none";
@@ -956,9 +1047,7 @@ async function cancelLeads() {
 }
 
 async function exportLeadsCsv() {
-  const visibleLeads = state.leadBothContactsOnly
-    ? state.leads.filter((lead) => lead.email && lead.phone)
-    : state.leads;
+  const visibleLeads = applyContactFilter(state.leads);
 
   if (!visibleLeads.length) return;
 

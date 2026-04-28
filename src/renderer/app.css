@@ -675,6 +675,130 @@ textarea {
   gap: 16px;
 }
 
+/* Page-range row spans both grid columns */
+.lead-page-range-row {
+  grid-column: 1 / -1;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.page-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.page-mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* Pill-style radio toggle */
+.page-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--gray-100);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.page-mode-btn {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.page-mode-btn input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.page-mode-btn span {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-500);
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.page-mode-btn input[type="radio"]:checked + span {
+  background: var(--white);
+  color: var(--gray-900);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+/* Custom range inputs — hidden until Custom Range is selected */
+.page-range-inputs {
+  display: none;
+  grid-template-columns: 120px 120px 1fr;
+  align-items: end;
+  gap: 12px;
+}
+
+.page-range-inputs.visible {
+  display: grid;
+}
+
+.page-range-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-600);
+}
+
+.page-range-inputs input[type="number"] {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--gray-200);
+  font-size: 13px;
+  background: var(--white);
+  color: var(--gray-900);
+  -moz-appearance: textfield;
+}
+
+.page-range-inputs input[type="number"]::-webkit-inner-spin-button,
+.page-range-inputs input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+.page-range-hint {
+  font-size: 11px;
+  color: var(--gray-400);
+  margin: 0;
+  align-self: end;
+  padding-bottom: 7px;
+}
+
+/* Groups the two contact-filter checkboxes with a subtle separator */
+.lead-contact-filter {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+}
+
 .lead-toolbar {
   margin-top: 16px;
   display: flex;
