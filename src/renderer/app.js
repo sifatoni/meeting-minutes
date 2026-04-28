@@ -16,7 +16,8 @@ const state = {
   latestMinutes: null,
   leads: [],
   leadSearches: [],
-  leadBothContactsOnly: true
+  leadBothContactsOnly: false,
+  leadDebugMode: false
 };
 
 const elements = {
@@ -68,22 +69,21 @@ const elements = {
   leadStatusPill: document.getElementById("leadStatusPill"),
   leadIndustryInput: document.getElementById("leadIndustryInput"),
   leadCountrySelect: document.getElementById("leadCountrySelect"),
+  leadAreaInput: document.getElementById("leadAreaInput"),
   leadOrganizationInput: document.getElementById("leadOrganizationInput"),
   leadDesignationsInput: document.getElementById("leadDesignationsInput"),
   leadSearchBtn: document.getElementById("leadSearchBtn"),
+  leadCancelBtn: document.getElementById("leadCancelBtn"),
   leadExportBtn: document.getElementById("leadExportBtn"),
   leadClearBtn: document.getElementById("leadClearBtn"),
   leadBothContactsOnlyInput: document.getElementById("leadBothContactsOnlyInput"),
+  leadQueryModeSelect: document.getElementById("leadQueryModeSelect"),
+  leadDebugModeInput: document.getElementById("leadDebugModeInput"),
+  leadTable: document.getElementById("leadTable"),
   leadSummary: document.getElementById("leadSummary"),
   leadTableBody: document.getElementById("leadTableBody"),
   meetingModuleTab: document.getElementById("meetingModuleTab"),
-  leadModuleTab: document.getElementById("leadModuleTab"),
-  apolloApiKeyInput: document.getElementById("apolloApiKeyInput"),
-  apolloApiKeySaveBtn: document.getElementById("apolloApiKeySaveBtn"),
-  pdlApiKeyInput: document.getElementById("pdlApiKeyInput"),
-  pdlApiKeySaveBtn: document.getElementById("pdlApiKeySaveBtn"),
-  hunterApiKeyInput: document.getElementById("hunterApiKeyInput"),
-  hunterApiKeySaveBtn: document.getElementById("hunterApiKeySaveBtn")
+  leadModuleTab: document.getElementById("leadModuleTab")
 };
 
 const COUNTRY_FALLBACK_CODES = [
@@ -109,31 +109,20 @@ elements.uploadBtn.addEventListener("click", uploadExistingAudio);
 elements.retryAiBtn.addEventListener("click", runOllamaSetup);
 elements.clearHistoryBtn.addEventListener("click", clearHistory);
 elements.leadSearchBtn.addEventListener("click", searchLeads);
+elements.leadCancelBtn.addEventListener("click", cancelLeads);
 elements.leadExportBtn.addEventListener("click", exportLeadsCsv);
 elements.leadClearBtn.addEventListener("click", clearLeads);
 elements.meetingModuleTab.addEventListener("click", () => setActiveModule("meeting"));
 elements.leadModuleTab.addEventListener("click", () => setActiveModule("leads"));
-elements.apolloApiKeySaveBtn.addEventListener("click", async () => {
-  const key = elements.apolloApiKeyInput.value.trim();
-  await window.meetingApp.saveConfig({ apolloApiKey: key });
-  elements.apolloApiKeyInput.type = key ? "password" : "text";
-  setLeadStatus(key ? "Apollo API saved" : "Apollo API removed", key ? "success" : "warning");
-});
-elements.pdlApiKeySaveBtn.addEventListener("click", async () => {
-  const key = elements.pdlApiKeyInput.value.trim();
-  await window.meetingApp.saveConfig({ pdlApiKey: key });
-  elements.pdlApiKeyInput.type = key ? "password" : "text";
-  setLeadStatus(key ? "PDL API saved" : "PDL API removed", key ? "success" : "warning");
-});
-elements.hunterApiKeySaveBtn.addEventListener("click", async () => {
-  const key = elements.hunterApiKeyInput.value.trim();
-  await window.meetingApp.saveConfig({ hunterApiKey: key });
-  elements.hunterApiKeyInput.type = key ? "password" : "text";
-  setLeadStatus(key ? "Hunter API saved" : "Hunter API removed", key ? "success" : "warning");
-});
 elements.leadTableBody.addEventListener("click", onLeadTableClick);
 elements.leadBothContactsOnlyInput.addEventListener("change", () => {
   state.leadBothContactsOnly = elements.leadBothContactsOnlyInput.checked;
+  renderLeads();
+});
+
+elements.leadDebugModeInput.addEventListener("change", () => {
+  state.leadDebugMode = elements.leadDebugModeInput.checked;
+  elements.leadTable.classList.toggle("debug-active", state.leadDebugMode);
   renderLeads();
 });
 
@@ -214,18 +203,6 @@ async function init() {
     elements.groqApiKeyEditLink.style.display = "none";
   }
   elements.groqApiKeyBox.style.display = elements.transcriptionModelSelect.value === "groq" ? "block" : "none";
-  if (state.config.apolloApiKey) {
-    elements.apolloApiKeyInput.value = state.config.apolloApiKey;
-    elements.apolloApiKeyInput.type = "password";
-  }
-  if (state.config.pdlApiKey) {
-    elements.pdlApiKeyInput.value = state.config.pdlApiKey;
-    elements.pdlApiKeyInput.type = "password";
-  }
-  if (state.config.hunterApiKey) {
-    elements.hunterApiKeyInput.value = state.config.hunterApiKey;
-    elements.hunterApiKeyInput.type = "password";
-  }
 
   populateCountryDropdown();
 
@@ -789,7 +766,7 @@ function renderLeads() {
     const hasHiddenLeads = state.leads.length > 0 && state.leadBothContactsOnly;
     elements.leadTableBody.innerHTML = `
       <tr>
-        <td colspan="8" class="muted">${hasHiddenLeads ? "No leads with both phone and email. Uncheck the filter to view partial contacts." : "No leads found."}</td>
+        <td colspan="9" class="muted">${hasHiddenLeads ? "No leads with both phone and email. Uncheck the filter to view partial contacts." : "No leads found."}</td>
       </tr>
     `;
     return;
@@ -802,6 +779,30 @@ function renderLeads() {
         ? "lead-value-medium"
         : "lead-value-low";
 
+    const bd = lead.scoreBreakdown || {};
+    const scoreTooltip = [
+      `Score: ${lead.contactScore || 0}`,
+      `─────────────`,
+      `Email: ${bd.email || 0}`,
+      `Phone: ${bd.phone || 0}`,
+      `LinkedIn: ${bd.linkedin || 0}`,
+      `Designation: ${bd.designation || 0}`,
+      `Company: ${bd.company || 0}`
+    ].join("\n");
+
+    const emailTypeBadge = lead.emailType
+      ? `<span class="lead-email-type lead-email-type--${lead.emailType.toLowerCase()}">${escapeHtml(lead.emailType)}</span>`
+      : "";
+
+    // Debug column — always rendered; CSS toggles visibility via .debug-active
+    const debugCell = `
+      <td class="debug-col">
+        <span class="debug-source-badge">${escapeHtml(lead.source || "—")}</span>
+        <span class="debug-score-detail" title="${escapeHtml(`E:${bd.email||0} P:${bd.phone||0} Li:${bd.linkedin||0} D:${bd.designation||0} Co:${bd.company||0}`)}">
+          ${bd.email||0}e&nbsp;·&nbsp;${bd.phone||0}p&nbsp;·&nbsp;${bd.linkedin||0}li
+        </span>
+      </td>`;
+
     return `
       <tr>
         <td>${escapeHtml(lead.name || "N/A")}</td>
@@ -811,6 +812,7 @@ function renderLeads() {
         <td>
           <div class="lead-email-cell">
             <span>${escapeHtml(lead.email || "N/A")}</span>
+            ${emailTypeBadge}
             ${lead.email ? `<button class="lead-copy-btn secondary" type="button" data-email="${escapeHtml(lead.email)}">Copy</button>` : ""}
           </div>
         </td>
@@ -819,10 +821,11 @@ function renderLeads() {
         </td>
         <td>${escapeHtml(lead.location || "N/A")}</td>
         <td>
-          <span class="lead-value-badge ${bandClass}">
+          <span class="lead-value-badge ${bandClass}" title="${escapeHtml(scoreTooltip)}">
             ${escapeHtml(String(lead.contactScore || 0))} | ${escapeHtml(lead.valueBand || "Low")}
           </span>
         </td>
+        ${debugCell}
       </tr>
     `;
   }).join("");
@@ -847,7 +850,7 @@ async function onLeadTableClick(event) {
 async function searchLeads() {
   const industry = elements.leadIndustryInput.value.trim();
   const location = elements.leadCountrySelect.value.trim();
-  const selectedCountryCode = elements.leadCountrySelect.selectedOptions[0]?.dataset?.countryCode || "";
+  const area = elements.leadAreaInput.value.trim();
   const organization = elements.leadOrganizationInput.value.trim();
   const designations = parseDesignationsInput(elements.leadDesignationsInput.value);
 
@@ -856,61 +859,99 @@ async function searchLeads() {
     return;
   }
 
-  elements.leadSearchBtn.disabled = true;
-  setLeadStatus("Searching...", "warning");
-  elements.leadSummary.textContent = "Collecting and verifying contacts. Please wait...";
+  window.meetingApp.onLeadsProgress((data) => {
+    elements.leadSummary.textContent = data.message || "Searching...";
+    if (data.count > 0) {
+      elements.leadSummary.textContent += ` (${data.count} found so far)`;
+    }
+  });
 
-  try {
-    const result = await window.meetingApp.searchLeadsLocal({
-      industry,
-      location,
-      countryCode: selectedCountryCode,
-      organization,
-      designations
-    });
+  // ── Real-time streaming: append leads as they arrive ──
+  window.meetingApp.onLeadsChunk((data) => {
+    console.log(`[UI] Received leads:chunk → ${data.leads?.length || 0} leads (total from server: ${data.total})`);
+    if (data.leads && data.leads.length > 0) {
+      // Append new leads without replacing existing ones
+      const existingKeys = new Set(state.leads.map(l =>
+        (l.email || l.phone || l.linkedinUrl || `${l.name}|${l.organization}`).toLowerCase()
+      ));
 
+      let added = 0;
+      for (const lead of data.leads) {
+        const key = (lead.email || lead.phone || lead.linkedinUrl || `${lead.name}|${lead.organization}`).toLowerCase();
+        if (!existingKeys.has(key)) {
+          state.leads.push(lead);
+          existingKeys.add(key);
+          added++;
+        }
+      }
+
+      console.log(`[UI] Appended ${added} new leads (${state.leads.length} total in state)`);
+      renderLeads();
+    }
+  });
+
+  window.meetingApp.onLeadsComplete(async (data) => {
+    elements.leadSearchBtn.disabled = false;
+    elements.leadCancelBtn.style.display = "none";
+    // Final refresh from disk for consistency
     const leadState = await window.meetingApp.getLeadsState();
     state.leads = leadState.leads || [];
-    state.leadSearches = leadState.searches || [];
     renderLeads();
+    setLeadStatus(data.total > 0 ? "Ready" : "No Leads", data.total > 0 ? "success" : "warning");
+    elements.leadSummary.textContent = [
+      `Found: ${data.total} leads`,
+      `High: ${data.highValue} · Medium: ${data.mediumValue} · Low: ${data.lowValue}`
+    ].join("  |  ");
+  });
 
-    const debug = result.debug || {};
-    const hasErrors = debug.apiErrors && debug.apiErrors.length > 0;
-    const hasWarnings = debug.apiWarnings && debug.apiWarnings.length > 0;
-
-    if (result.total > 0) {
-      setLeadStatus("Ready", "success");
-    } else if (hasErrors) {
-      setLeadStatus("API Error", "error");
-    } else {
-      setLeadStatus("No Leads", "warning");
+  // ── CAPTCHA event handler ──
+  window.meetingApp.onLeadsCaptcha((data) => {
+    if (data.type === "captcha") {
+      setLeadStatus("⚠ CAPTCHA — Solve in browser window", "warning");
+      elements.leadSummary.textContent = data.message || "Manual verification required";
+    } else if (data.type === "solved") {
+      setLeadStatus("Resuming...", "success");
+      elements.leadSummary.textContent = data.message || "CAPTCHA solved — resuming scraping...";
+    } else if (data.type === "timeout") {
+      setLeadStatus("Searching...", "warning");
+      elements.leadSummary.textContent = data.message || "CAPTCHA timed out — continuing...";
     }
+  });
 
-    const sourceCounts = [
-      debug.apolloLeads > 0 ? `Apollo: ${debug.apolloLeads}` : null,
-      debug.pdlLeads > 0 ? `PDL: ${debug.pdlLeads}` : null,
-      debug.hunterLeads > 0 ? `Hunter: ${debug.hunterLeads}` : null,
-      debug.linkedInLeads > 0 ? `LinkedIn: ${debug.linkedInLeads}` : null,
-      debug.emailsGuessed > 0 ? `Emails guessed: ${debug.emailsGuessed}` : null,
-      (!debug.apolloLeads && debug.pagesFetched > 0) ? `Pages scraped: ${debug.pagesFetched}` : null
-    ].filter(Boolean).join(", ");
-
-    const parts = [
-      `Found: ${result.total} leads`,
-      `High: ${result.highValue} · Medium: ${result.mediumValue} · Low: ${result.lowValue}`,
-      debug.apiProvider ? `Sources: ${debug.apiProvider}` : null,
-      sourceCounts || null,
-      hasWarnings ? `Notes: ${debug.apiWarnings.join(" | ")}` : null,
-      hasErrors ? `⚠ Errors: ${debug.apiErrors.join(" | ")}` : null
-    ].filter(Boolean);
-    elements.leadSummary.textContent = parts.join("  |  ");
-  } catch (error) {
-    console.error("Lead search failed:", error);
-    setLeadStatus("Search Failed", "error");
-    elements.leadSummary.textContent = error.message || "Lead discovery failed.";
-    alert(`Lead search failed:\n\n${error.message || "Unknown error"}`);
-  } finally {
+  window.meetingApp.onLeadsError((data) => {
     elements.leadSearchBtn.disabled = false;
+    elements.leadCancelBtn.style.display = "none";
+    setLeadStatus("Search Failed", "error");
+    elements.leadSummary.textContent = data.message || "Lead discovery failed.";
+    // Keep any partial leads that were already streamed
+  });
+
+  elements.leadSearchBtn.disabled = true;
+  elements.leadCancelBtn.style.display = "";
+  setLeadStatus("Searching...", "warning");
+  elements.leadSummary.textContent = "Starting search — this may take 3–5 minutes...";
+
+  try {
+    const queryMode = elements.leadQueryModeSelect?.value || "aggressive";
+    console.log(`[UI] Starting search — mode: ${queryMode}, designations: ${JSON.stringify(designations)}`);
+    await window.meetingApp.searchLeads({ industry, location, area, organization, designations, queryMode });
+  } catch (error) {
+    elements.leadSearchBtn.disabled = false;
+    elements.leadCancelBtn.style.display = "none";
+    setLeadStatus("Search Failed", "error");
+    elements.leadSummary.textContent = error.message || "Failed to start search.";
+  }
+}
+
+async function cancelLeads() {
+  try {
+    await window.meetingApp.cancelLeads();
+    elements.leadSearchBtn.disabled = false;
+    elements.leadCancelBtn.style.display = "none";
+    setLeadStatus("Cancelled");
+    elements.leadSummary.textContent = "Search cancelled.";
+  } catch (err) {
+    console.error("Cancel error:", err);
   }
 }
 

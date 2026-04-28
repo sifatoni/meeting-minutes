@@ -23,8 +23,29 @@ contextBridge.exposeInMainWorld("meetingApp", {
   },
 
   // Lead intelligence module
-  searchLeadsLocal: (payload) => ipcRenderer.invoke("leads:searchLocal", payload),
+  searchLeads: (payload) => ipcRenderer.invoke("leads:search", payload),
+  cancelLeads: () => ipcRenderer.invoke("leads:cancel"),
   getLeadsState: () => ipcRenderer.invoke("leads:getState"),
   exportLeadsCsv: (payload) => ipcRenderer.invoke("leads:exportCsv", payload),
-  clearLeads: () => ipcRenderer.invoke("leads:clear")
+  clearLeads: () => ipcRenderer.invoke("leads:clear"),
+  onLeadsProgress: (callback) => {
+    ipcRenderer.removeAllListeners("leads:progress");
+    ipcRenderer.on("leads:progress", (_event, data) => callback(data));
+  },
+  onLeadsComplete: (callback) => {
+    ipcRenderer.removeAllListeners("leads:complete");
+    ipcRenderer.on("leads:complete", (_event, data) => callback(data));
+  },
+  onLeadsChunk: (callback) => {
+    ipcRenderer.removeAllListeners("leads:chunk");
+    ipcRenderer.on("leads:chunk", (_event, data) => callback(data));
+  },
+  onLeadsCaptcha: (callback) => {
+    ipcRenderer.removeAllListeners("leads:captcha");
+    ipcRenderer.on("leads:captcha", (_event, data) => callback(data));
+  },
+  onLeadsError: (callback) => {
+    ipcRenderer.removeAllListeners("leads:error");
+    ipcRenderer.on("leads:error", (_event, data) => callback(data));
+  }
 });

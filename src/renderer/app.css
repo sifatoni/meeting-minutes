@@ -669,74 +669,6 @@ textarea {
 }
 
 /* --- Lead Intelligence --- */
-.api-settings-group {
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  margin-bottom: 20px;
-  background: var(--gray-25);
-}
-
-.api-settings-group summary {
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--gray-600);
-  user-select: none;
-  list-style: none;
-}
-
-.api-settings-group summary::-webkit-details-marker { display: none; }
-
-.api-settings-group[open] summary {
-  border-bottom: 1px solid var(--gray-200);
-  color: var(--deep-teal);
-}
-
-.api-settings-body {
-  padding: 14px;
-}
-
-.api-key-row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.api-key-input-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.api-key-input-row input {
-  flex: 1;
-  margin: 0;
-}
-
-button.small {
-  padding: 0 12px;
-  height: 34px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.field-hint {
-  display: block;
-  font-size: 11px;
-  color: var(--gray-400);
-  margin-top: 4px;
-}
-
-.field-hint a {
-  color: var(--teal);
-  text-decoration: none;
-}
-
-.field-hint a:hover {
-  text-decoration: underline;
-}
-
 .lead-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -823,6 +755,48 @@ button.small {
   padding: 4px 8px;
   font-size: 11px;
   min-width: auto;
+}
+
+.lead-email-type {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lead-email-type--personal {
+  background: rgba(67, 181, 160, 0.15);
+  color: #43b5a0;
+}
+
+.lead-email-type--business {
+  background: rgba(88, 101, 242, 0.15);
+  color: #8b9cf4;
+}
+
+/* Debug column — hidden until table gets .debug-active */
+.lead-table .debug-col { display: none; }
+.lead-table.debug-active .debug-col { display: table-cell; }
+
+.debug-source-badge {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #a0a3aa;
+  letter-spacing: 0.2px;
+  margin-bottom: 3px;
+}
+
+.debug-score-detail {
+  display: block;
+  font-size: 10px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
 }
 
 /* --- Animations --- */

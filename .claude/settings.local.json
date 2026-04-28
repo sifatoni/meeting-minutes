@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check src/main/main.js)",
+      "Bash(node --check src/main/preload.js)",
+      "Bash(node --check src/renderer/app.js)",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('./src/main/scrapers/emailExtractor'\\); require\\('./src/main/scrapers/leadMerger'\\); require\\('./src/main/scrapers/leadCleaner'\\); console.log\\('Scraper utils OK'\\)\")"
+    ]
+  }
+}
