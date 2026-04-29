@@ -432,7 +432,7 @@ ipcMain.handle("meeting:updateMinutes", async (_event, payload) => {
   return meeting;
 });
 
-ipcMain.handle("meeting:process", async (_event, meetingId) => {
+ipcMain.handle("meeting:process", async (_event, meetingId, options = {}) => {
   const meetings = readJson(getMeetingsPath(), []);
   const meeting = meetings.find((item) => item.id === meetingId);
   if (!meeting) throw new Error("Meeting not found.");
@@ -443,7 +443,8 @@ ipcMain.handle("meeting:process", async (_event, meetingId) => {
   meeting.status = "Processing";
   writeJson(getMeetingsPath(), meetings);
 
-  const config = readJson(getConfigPath(), {});
+  // Merge per-request options (e.g. summaryMode) over the persisted config
+  const config = { ...readJson(getConfigPath(), {}), ...options };
   const scriptPath = path.join(app.getAppPath(), "scripts", "process_meeting.py");
   const input = JSON.stringify({
     meeting,
@@ -453,8 +454,9 @@ ipcMain.handle("meeting:process", async (_event, meetingId) => {
 
   const result = await runPython(scriptPath, input);
   const output = JSON.parse(result);
+  const minutes = readJson(output.minutesPath, {});
 
-  meeting.status = "Minutes Ready";
+  meeting.status = minutes._transcriptionError ? "Transcription Failed" : "Minutes Ready";
   meeting.files.transcript = output.transcriptPath;
   meeting.files.minutes = output.minutesPath;
   meeting.files.docx = output.docxPath;
@@ -463,7 +465,7 @@ ipcMain.handle("meeting:process", async (_event, meetingId) => {
   return {
     meeting,
     transcript: fs.readFileSync(output.transcriptPath, "utf8"),
-    minutes: readJson(output.minutesPath, {})
+    minutes
   };
 });
 

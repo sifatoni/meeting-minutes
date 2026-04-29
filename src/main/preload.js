@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, clipboard } = require("electron");
 
 contextBridge.exposeInMainWorld("meetingApp", {
   getState: () => ipcRenderer.invoke("app:getState"),
@@ -9,7 +9,8 @@ contextBridge.exposeInMainWorld("meetingApp", {
   createMeeting: (payload) => ipcRenderer.invoke("meeting:create", payload),
   saveRecording: (payload) => ipcRenderer.invoke("meeting:saveRecording", payload),
   deleteSourceRecordings: (meetingId) => ipcRenderer.invoke("meeting:deleteSourceRecordings", meetingId),
-  processMeeting: (meetingId) => ipcRenderer.invoke("meeting:process", meetingId),
+  processMeeting: (meetingId, options) => ipcRenderer.invoke("meeting:process", meetingId, options),
+  copyToClipboard: (text) => clipboard.writeText(text),
   updateMinutes: (payload) => ipcRenderer.invoke("meeting:updateMinutes", payload),
   exportDocx: (payload) => ipcRenderer.invoke("meeting:exportDocx", payload),
   clearHistory: () => ipcRenderer.invoke("meeting:clearHistory"),

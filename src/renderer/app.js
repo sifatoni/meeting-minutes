@@ -89,6 +89,7 @@ const elements = {
   leadTable: document.getElementById("leadTable"),
   leadSummary: document.getElementById("leadSummary"),
   leadTableBody: document.getElementById("leadTableBody"),
+  summaryModeSelect: document.getElementById("summaryModeSelect"),
   meetingModuleTab: document.getElementById("meetingModuleTab"),
   leadModuleTab: document.getElementById("leadModuleTab")
 };
@@ -103,6 +104,48 @@ const COUNTRY_FALLBACK_CODES = [
   "RU","RW","SA","SN","RS","SL","SG","SK","SI","SB","SO","ZA","SS","ES","LK","SD","SR","SE","CH","SY","TW","TJ",
   "TZ","TH","TL","TG","TO","TT","TN","TR","TM","UG","UA","AE","GB","US","UY","UZ","VE","VN","YE","ZM","ZW"
 ];
+
+// SVG icons used by copy buttons — defined once, referenced in templates and click handler
+const ICON_COPY = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>`;
+const ICON_CHECK = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+let _toastContainer = null;
+
+function showToast(message, type = "info") {
+  if (!_toastContainer) {
+    _toastContainer = document.createElement("div");
+    _toastContainer.id = "toast-container";
+    document.body.appendChild(_toastContainer);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast--${type}`;
+  toast.textContent = message;
+  _toastContainer.appendChild(toast);
+
+  const remove = () => {
+    toast.classList.add("toast-out");
+    toast.addEventListener("animationend", () => toast.remove(), { once: true });
+  };
+  setTimeout(remove, 2800);
+}
+
+// ─── Clipboard ────────────────────────────────────────────────────────────────
+
+function copyText(text) {
+  try {
+    if (window.meetingApp?.copyToClipboard) {
+      window.meetingApp.copyToClipboard(text);
+      return true;
+    }
+    // Fallback for non-Electron / dev-mode browser
+    navigator.clipboard.writeText(text).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 window.addEventListener("DOMContentLoaded", init);
 
@@ -432,7 +475,7 @@ async function stopRecording() {
   if (state.systemChunks.length) {
     systemAudioBytes = await saveChunks("system", state.systemChunks);
   } else if (elements.systemAudioInput.checked) {
-    alert("System audio was not recorded. For an Online Meeting with headset, the other participant voice will be missing. Please test again before an important meeting.");
+    showToast("System audio was not recorded. The other participant's voice may be missing.", "warning");
   }
 
   let mixedAudioBytes = 0;
@@ -507,13 +550,13 @@ async function processMeeting() {
           await runOllamaSetupAndWait();
           const recheckStatus = await window.meetingApp.checkOllama();
           if (!recheckStatus.running || !recheckStatus.modelReady) {
-            alert("Ollama AI is not ready yet.\n\nPlease wait for the AI setup to complete in the panel above, or switch to 'Online model' in the sidebar if you have an API key.");
+            showToast("Ollama AI is not ready. Complete AI setup above, or switch to Online model.", "warning");
             setStatus("AI Not Ready");
             elements.processBtn.disabled = false;
             return;
           }
         } catch (setupErr) {
-          alert("Could not set up local AI automatically.\n\nYou can:\n1. Wait and click 'Retry Setup' in the AI Setup panel\n2. Install Ollama manually from https://ollama.com\n3. Switch to an online model in the sidebar");
+          showToast("Could not start local AI. Use 'Retry Setup' above or switch to Online model.", "error");
           setStatus("AI Setup Failed");
           elements.processBtn.disabled = false;
           return;
@@ -526,8 +569,10 @@ async function processMeeting() {
 
   setStatus("Processing... (this may take a few minutes)", true);
 
+  const summaryMode = elements.summaryModeSelect?.value || "standard";
+
   try {
-    const result = await window.meetingApp.processMeeting(state.currentMeeting.id);
+    const result = await window.meetingApp.processMeeting(state.currentMeeting.id, { summaryMode });
     state.currentMeeting = result.meeting;
     state.latestMinutes = result.minutes;
     elements.minutesEditor.value = minutesToText(result.minutes);
@@ -535,10 +580,33 @@ async function processMeeting() {
     elements.exportPathLabel.textContent = result.meeting.files.docx
       ? `Draft Word file: ${result.meeting.files.docx}`
       : "";
-    setStatus("Minutes Ready");
+    if (result.minutes._transcriptionError) {
+      setStatus("Transcription Failed");
+      showToast("Transcription failed — see details in the editor.", "error");
+    } else {
+      setStatus("Minutes Ready");
+      if (result.minutes._confidence !== undefined) {
+        const conf = result.minutes._confidence;
+        if (conf >= 80) {
+          showToast(`High confidence (${conf}%)`, "ok");
+        } else if (conf >= 50) {
+          showToast(`Medium confidence (${conf}%)`, "warning");
+        } else {
+          showToast(`Low confidence (${conf}%)`, "error");
+        }
+        
+        if (result.minutes._statusMessage) {
+          setTimeout(() => showToast(result.minutes._statusMessage, "warning"), 3000);
+        }
+      } else if (result.minutes._statusMessage) {
+        showToast(result.minutes._statusMessage, "warning");
+      } else if (result.minutes._transcriptQuality === "noisy") {
+        showToast("Transcript quality is low — results may be inaccurate.", "warning");
+      }
+    }
   } catch (error) {
     console.error("Processing Error:", error);
-    alert("Failed to generate minutes:\n\n" + (error.message || "Unknown error"));
+    showToast("Failed to generate minutes: " + (error.message || "Unknown error"), "error");
     setStatus("Error Processing");
   } finally {
     elements.processBtn.disabled = false;
@@ -894,11 +962,18 @@ function renderLeads() {
           <div class="lead-email-cell">
             <span>${escapeHtml(lead.email || "N/A")}</span>
             ${emailTypeBadge}
-            ${lead.email ? `<button class="lead-copy-btn secondary" type="button" data-email="${escapeHtml(lead.email)}">Copy</button>` : ""}
+            ${lead.email ? `<button class="lead-copy-icon-btn" type="button" data-email="${escapeHtml(lead.email)}" title="Copy email">${ICON_COPY}</button>` : ""}
           </div>
         </td>
         <td>
-          ${lead.linkedinUrl ? `<a href="${escapeHtml(lead.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(lead.linkedinUrl)}</a>` : "N/A"}
+          ${lead.linkedinUrl
+            ? `<div class="lead-linkedin-cell">
+                <a href="${escapeHtml(lead.linkedinUrl)}" target="_blank" rel="noopener noreferrer"
+                   title="${escapeHtml(lead.linkedinUrl)}">${escapeHtml(lead.linkedinUrl)}</a>
+                <button class="lead-copy-icon-btn" type="button"
+                        data-linkedin="${escapeHtml(lead.linkedinUrl)}" title="Copy LinkedIn URL">${ICON_COPY}</button>
+              </div>`
+            : "N/A"}
         </td>
         <td>${escapeHtml(lead.location || "N/A")}</td>
         <td>
@@ -912,19 +987,22 @@ function renderLeads() {
   }).join("");
 }
 
-async function onLeadTableClick(event) {
-  const button = event.target.closest("button[data-email]");
-  if (!button) return;
-  const email = button.getAttribute("data-email");
-  if (!email) return;
+function onLeadTableClick(event) {
+  const btn = event.target.closest("button[data-email], button[data-linkedin]");
+  if (!btn) return;
+  const value = btn.getAttribute("data-email") || btn.getAttribute("data-linkedin");
+  if (!value) return;
 
-  try {
-    await navigator.clipboard.writeText(email);
-    const previous = button.textContent;
-    button.textContent = "Copied";
-    setTimeout(() => { button.textContent = previous; }, 900);
-  } catch {
-    alert("Copy failed. Please copy manually.");
+  const ok = copyText(value);
+  if (ok) {
+    btn.innerHTML = ICON_CHECK;
+    btn.classList.add("lead-copy-icon-btn--copied");
+    setTimeout(() => {
+      btn.innerHTML = ICON_COPY;
+      btn.classList.remove("lead-copy-icon-btn--copied");
+    }, 1000);
+  } else {
+    showToast("Copy failed — please copy manually.", "error");
   }
 }
 
@@ -936,7 +1014,7 @@ async function searchLeads() {
   const designations = parseDesignationsInput(elements.leadDesignationsInput.value);
 
   if (!industry || !location) {
-    alert("Industry and country are required.");
+    showToast("Industry and country are required.", "warning");
     return;
   }
 
@@ -1059,7 +1137,7 @@ async function exportLeadsCsv() {
     }
   } catch (error) {
     setLeadStatus("Export Failed", "error");
-    alert(`Could not export CSV:\n\n${error.message || "Unknown error"}`);
+    showToast("Could not export CSV: " + (error.message || "Unknown error"), "error");
   }
 }
 
