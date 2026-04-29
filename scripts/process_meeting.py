@@ -1,7 +1,17 @@
+import sys
+
+# Force UTF-8 on Windows (default is cp1252, crashes on Bengali/surrogate text).
+# Must come before any other import that could trigger I/O.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import json
 import os
 import re
-import sys
+import shutil
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -10,8 +20,11 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 
+FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
+
 DEFAULT_WHISPER_MODEL = os.environ.get("MEETING_WHISPER_MODEL", "medium")
-DEFAULT_OLLAMA_MODEL = os.environ.get("MEETING_OLLAMA_MODEL", "gemini-3-flash-preview")
+DEFAULT_OLLAMA_MODEL = os.environ.get("MEETING_OLLAMA_MODEL", "qwen2.5:3b")
+CLOUD_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
 OLLAMA_GENERATE_URL = os.environ.get("MEETING_OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 
 GROQ_MAX_BYTES = 25 * 1024 * 1024  # Groq's hard per-request file-size limit
@@ -31,7 +44,10 @@ _TRANSCRIPT_ERROR_PATTERNS = [
 def clean_text(text):
     """Remove common transcript noise before LLM processing."""
     if not text:
-        return text
+        return ""
+    # Strip surrogates and replacement characters that crash UTF-8 serialisation
+    text = text.encode("utf-8", "ignore").decode("utf-8")
+    text = text.replace("\udc8d", "").replace("�", "")
     # collapse repeated chars
     text = re.sub(r'(.)\1{4,}', r'\1', text)
     # collapse repeated words
@@ -62,26 +78,75 @@ def is_bad(text):
     return False
 
 
-def split_audio(file_path, chunk_ms=120000):
+def load_audio_safe(file_path):
+    if not FFMPEG_AVAILABLE:
+        sys.stderr.write("[ERROR] ffmpeg not found — cannot process audio\n")
+        return None
     try:
         from pydub import AudioSegment
+        return AudioSegment.from_file(file_path)
     except ImportError:
         sys.stderr.write("[ERROR] pydub not installed. Run: pip install pydub\n")
-        return [file_path]
-    
-    audio = AudioSegment.from_file(file_path)
+        return None
+    except Exception as e:
+        sys.stderr.write(f"[ERROR] Failed to load audio: {e}\n")
+        return None
+
+
+def split_audio_safe(audio, file_path, chunk_ms=120000):
+    if audio is None:
+        return []
     chunks = []
-    for i in range(0, len(audio), chunk_ms):
-        chunk = audio[i:i+chunk_ms]
-        if chunk.dBFS < -42 and len(chunk) > 2000:
-            sys.stderr.write(f"[INFO] Skipping silent chunk ({chunk.dBFS:.1f} dBFS)\n")
-            continue
-        if len(chunk) < 1000:
-            continue
-        name = f"{file_path}_chunk_{i}.wav"
-        chunk.export(name, format="wav")
-        chunks.append(name)
+    try:
+        for i in range(0, len(audio), chunk_ms):
+            chunk = audio[i:i + chunk_ms]
+            if chunk.dBFS < -42 and len(chunk) > 2000:
+                sys.stderr.write(f"[INFO] Skipping silent chunk ({chunk.dBFS:.1f} dBFS)\n")
+                continue
+            if len(chunk) < 1000:
+                continue
+            name = f"{file_path}_chunk_{i}.wav"
+            chunk.export(name, format="wav")
+            chunks.append(name)
+    except Exception as e:
+        sys.stderr.write(f"[WARN] Chunking failed: {e}\n")
+        return [file_path]  # fallback: treat whole file as single chunk
     return chunks
+
+
+def split_audio(file_path, chunk_ms=120000):
+    audio = load_audio_safe(file_path)
+    if audio is None:
+        return [file_path]  # fallback: pass original file, let transcriber handle it
+    return split_audio_safe(audio, file_path, chunk_ms)
+
+
+def _safe_str(value):
+    """Strip surrogate chars that crash json.dumps, replacing them with '?'."""
+    return str(value).encode("utf-8", "replace").decode("utf-8")
+
+
+def safe_json_print(obj):
+    """Recursively sanitize strings in obj then print as JSON to stdout."""
+    def _sanitize(v):
+        if isinstance(v, str):
+            return _safe_str(v)
+        if isinstance(v, dict):
+            return {k: _sanitize(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [_sanitize(item) for item in v]
+        return v
+    print(json.dumps(_sanitize(obj)))
+
+
+def fail_response(reason):
+    return {
+        "status": "error",
+        "message": _safe_str(reason),
+        "transcriptPath": None,
+        "minutesPath": None,
+        "docxPath": None
+    }
 
 
 def detect_language(text):
@@ -140,6 +205,15 @@ def is_summary_invalid(summary):
 
 
 def main():
+    try:
+        _run()
+    except Exception as e:
+        sys.stderr.write(f"[FATAL] Unhandled exception: {e}\n")
+        safe_json_print(fail_response(f"Processing failed: {e}"))
+        sys.exit(0)  # exit 0 so JS reads stdout JSON instead of discarding it
+
+
+def _run():
     payload = json.loads(sys.stdin.read())
     meeting = payload["meeting"]
     output_dir = Path(payload["outputDir"])
@@ -150,11 +224,20 @@ def main():
     transcript_path = output_dir / "transcript.txt"
     docx_path = get_docx_path(meeting, output_dir)
 
+    _paths = lambda: {
+        "transcriptPath": str(transcript_path),
+        "minutesPath": str(minutes_path),
+        "docxPath": str(docx_path)
+    }
+
     if payload.get("exportOnly"):
         minutes = read_json(minutes_path, {})
         write_docx(docx_path, minutes)
-        print(json.dumps({"docxPath": str(docx_path)}))
+        safe_json_print({"docxPath": str(docx_path)})
         return
+
+    if not FFMPEG_AVAILABLE:
+        sys.stderr.write("[WARN] ffmpeg not found in PATH — audio chunking and format conversion unavailable\n")
 
     transcript_result = transcribe_meeting_audio(meeting, config)
 
@@ -167,24 +250,26 @@ def main():
         minutes = build_error_minutes(meeting, err_msg)
         minutes_path.write_text(json.dumps(minutes, indent=2), encoding="utf-8")
         write_docx(docx_path, minutes)
-        print(json.dumps({
-            "transcriptPath": str(transcript_path),
-            "minutesPath": str(minutes_path),
-            "docxPath": str(docx_path)
-        }))
+        safe_json_print(_paths())
         return
 
     transcript_text = transcript_result["text"]
+
+    if is_transcript_bad(transcript_text):
+        sys.stderr.write("[GUARD] Transcript failed quality check — blocking before LLM\n")
+        minutes = build_error_minutes(meeting, "Transcription corrupted or audio too poor to process.")
+        transcript_path.write_text(transcript_text or "[empty]", encoding="utf-8")
+        minutes_path.write_text(json.dumps(minutes, indent=2), encoding="utf-8")
+        write_docx(docx_path, minutes)
+        safe_json_print(_paths())
+        return
+
     transcript_path.write_text(transcript_text, encoding="utf-8")
     minutes = build_minutes_from_transcript(meeting, transcript_text, config)
     minutes_path.write_text(json.dumps(minutes, indent=2), encoding="utf-8")
     write_docx(docx_path, minutes)
 
-    print(json.dumps({
-        "transcriptPath": str(transcript_path),
-        "minutesPath": str(minutes_path),
-        "docxPath": str(docx_path)
-    }))
+    safe_json_print(_paths())
 
 
 def read_json(path, fallback):
@@ -208,19 +293,21 @@ def transcribe_meeting_audio(meeting, config):
 
     file_size = audio_path.stat().st_size
     needs_chunking = file_size > 20 * 1024 * 1024
-    
-    try:
-        from pydub import AudioSegment
-        audio_dur_ms = len(AudioSegment.from_file(str(audio_path)))
-        if audio_dur_ms > 300000:  # 5 minutes
+
+    if FFMPEG_AVAILABLE:
+        audio_obj = load_audio_safe(str(audio_path))
+        if audio_obj is not None and len(audio_obj) > 300000:  # 5 minutes
             needs_chunking = True
-    except Exception:
-        pass
+    else:
+        sys.stderr.write("[WARN] ffmpeg not found — skipping duration check, will attempt transcription directly\n")
 
     chunks = [str(audio_path)]
     if needs_chunking:
-        sys.stderr.write("[INFO] Large/long file detected, triggering chunking mode\n")
-        chunks = split_audio(str(audio_path), chunk_ms=120000)
+        if not FFMPEG_AVAILABLE:
+            sys.stderr.write("[WARN] ffmpeg not found — skipping chunking, passing full file\n")
+        else:
+            sys.stderr.write("[INFO] Large/long file detected, triggering chunking mode\n")
+            chunks = split_audio(str(audio_path), chunk_ms=120000)
 
     transcription_model = config.get("transcriptionModel", "local")
     return process_audio_chunks(chunks, transcription_model, config, str(audio_path), meeting)
@@ -573,9 +660,11 @@ def build_minutes_from_transcript(meeting, transcript_result, config):
 
 
 def generate_minutes(meeting, date_text, transcript, config):
+    transcript = clean_text(transcript)
     if not transcript.strip():
         return None
 
+    sys.stderr.write(f"[SUMMARY INPUT LENGTH]: {len(transcript)}\n")
     summary_mode = config.get("summaryMode", "standard")
     lang = detect_language(transcript)
     sys.stderr.write(f"[INFO] Detected language: {lang.upper()} | Summary mode: {summary_mode}\n")
@@ -584,46 +673,119 @@ def generate_minutes(meeting, date_text, transcript, config):
     model = config.get("model", "")
 
     if model == "online":
-        return generate_minutes_with_openrouter(meeting, date_text, transcript, config, prompt)
-    else:
-        return generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
+        result = generate_minutes_with_openrouter(meeting, date_text, transcript, config, prompt)
+        if result is not None:
+            return result
+        sys.stderr.write("[FALLBACK] OpenRouter failed — falling back to local Ollama\n")
+
+    ollama_result = generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
+    if ollama_result is not None:
+        return ollama_result
+
+    sys.stderr.write("[FALLBACK] Ollama failed — using simple text extraction fallback\n")
+    return simple_summary_fallback(meeting, date_text, transcript)
+
+
+def simple_summary_fallback(meeting, date_text, transcript):
+    """Last-resort fallback: extract structure directly from transcript text — no AI required."""
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if len(s.strip()) > 20]
+    key_points = sentences[:5] if sentences else [transcript[:200]]
+
+    return {
+        "meetingTitle": meeting.get("title", "Untitled Meeting"),
+        "client": meeting.get("client", ""),
+        "date": date_text,
+        "participants": meeting.get("participants", ""),
+        "meetingObjective": "Auto-extracted — AI model unavailable.",
+        "discussionSummary": transcript[:500].strip() if transcript else "No transcript available.",
+        "keyPoints": key_points,
+        "decisions": [],
+        "actionItems": [],
+        "risks": [],
+        "nextSteps": ["Review this auto-extracted summary and edit as needed."],
+        "transcript": transcript,
+        "_statusMessage": "AI model unavailable — this is an auto-extracted summary only.",
+        "_confidence": 0
+    }
 
 
 def generate_minutes_with_openrouter(meeting, date_text, transcript, config, prompt):
-    try:
-        from openrouter import OpenRouter
-    except ImportError:
-        return None
-
-    api_key = config.get("openRouterApiKey", "")
+    api_key = config.get("openRouterApiKey", "").strip()
     if not api_key:
+        sys.stderr.write("[OPENROUTER] No API key provided\n")
+        return None
+
+    payload = json.dumps({
+        "model": CLOUD_MODEL,
+        "messages": [
+            {"role": "system", "content": "You generate clean professional meeting minutes. Output only valid JSON."},
+            {"role": "user", "content": prompt}
+        ]
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        method="POST"
+    )
+
+    result = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=120) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            break  # success
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = 2 * (attempt + 1)
+                sys.stderr.write(f"[OPENROUTER] 429 Rate limited — retry {attempt + 1}/3 in {wait}s\n")
+                time.sleep(wait)
+                continue
+            if e.code == 401:
+                sys.stderr.write("[OPENROUTER] 401 Unauthorized — invalid or expired API key\n")
+            else:
+                sys.stderr.write(f"[OPENROUTER] HTTP {e.code}: {e.reason}\n")
+            return None
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            sys.stderr.write(f"[OPENROUTER] Network error: {e}\n")
+            return None
+
+    if result is None:
+        sys.stderr.write("[OPENROUTER] Failed after 3 attempts (rate limit)\n")
         return None
 
     try:
-        with OpenRouter(api_key=api_key) as client:
-            response = client.chat.send(
-                model="qwen/qwen3-next-80b-a3b-instruct:free",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
-            raw_response = response.choices[0].message.content
-            
-            try:
-                import re
-                match = re.search(r'```(?:json)?(.*?)```', raw_response, re.DOTALL)
-                if match:
-                    raw_response = match.group(1)
-                minutes = json.loads(raw_response.strip())
-            except json.JSONDecodeError:
-                return None
-                
-            return normalize_llm_minutes(minutes, meeting, date_text, transcript)
-    except Exception:
+        raw_response = result["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError) as e:
+        sys.stderr.write(f"[OPENROUTER] Unexpected response shape: {e}\n")
         return None
+
+    sys.stderr.write(f"[OPENROUTER] Response length: {len(raw_response)} chars\n")
+
+    # Strip <think> blocks (some models emit them)
+    raw_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
+
+    # Unwrap markdown code fences if present
+    match = re.search(r'```(?:json)?\s*(.*?)```', raw_response, re.DOTALL)
+    if match:
+        raw_response = match.group(1).strip()
+
+    if not raw_response.startswith('{'):
+        json_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+        if json_match:
+            raw_response = json_match.group(0)
+
+    try:
+        minutes = json.loads(raw_response)
+    except json.JSONDecodeError as e:
+        sys.stderr.write(f"[OPENROUTER] JSON decode failed: {e}\n")
+        return None
+
+    return normalize_llm_minutes(minutes, meeting, date_text, transcript)
 
 
 def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt):

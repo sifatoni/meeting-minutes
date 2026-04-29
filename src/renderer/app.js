@@ -1,25 +1,11 @@
-const state = {
-  config: {},
-  meetings: [],
-  currentMeeting: null,
-  micStream: null,
-  micPaused: false,
-  micRecorder: null,
-  systemRecorder: null,
-  mixedRecorder: null,
-  audioContext: null,
-  micChunks: [],
-  systemChunks: [],
-  mixedChunks: [],
-  timerId: null,
-  startedAt: null,
-  latestMinutes: null,
-  leads: [],
-  leadSearches: [],
-  leadFilterAny: false,
-  leadFilterBoth: false,
-  leadDebugMode: false
-};
+import { getState, setState, subscribe } from "./state.js";
+import { emit, on } from "./eventBus.js";
+
+const state = getState();
+
+function isSetupComplete(s) {
+  return Boolean(s.config.audioDirectory && s.aiReady === true);
+}
 
 const elements = {
   chooseFolderBtn: document.getElementById("chooseFolderBtn"),
@@ -280,6 +266,9 @@ async function init() {
   }
   elements.apiKeyBox.style.display = elements.modelSelect.value === "online" ? "block" : "none";
 
+  // Issue 5: Audio Folder Sync Fix
+  loadAudioFolder();
+
   if (state.config.transcriptionModel) {
     elements.transcriptionModelSelect.value = state.config.transcriptionModel;
   } else {
@@ -301,13 +290,54 @@ async function init() {
   const savedModule = localStorage.getItem("activeModule");
   setActiveModule(savedModule === "leads" ? "leads" : "meeting");
   render();
-  checkAndSetupOllama();
+  checkLocalAI();
+}
+
+// 📦 UI AUTO UPDATE (Issue 6)
+subscribe((s) => {
+  const setupBox = elements.setupWarning;
+  const aiBox = elements.aiSetupPanel;
+
+  // Setup visibility
+  if (s.audioFolder || s.config.audioDirectory) {
+    setupBox.style.display = "none";
+  } else {
+    setupBox.style.display = "block";
+  }
+
+  // AI status
+  if (s.aiStatus === "ready" || s.aiReady === true) {
+    aiBox.style.display = "none";
+  } else if (s.aiStatus === "error" || s.aiStatus === "checking") {
+    aiBox.style.display = "block";
+  }
+});
+
+// 🔄 TAB SWITCH FIX (Issue 7)
+on("tab:change", () => {
+  const current = getState();
+  setState({ ...current });
+});
+
+// 📁 AUDIO FOLDER SYNC (Issue 5)
+function setAudioFolder(path) {
+  setState({ audioFolder: path });
+  localStorage.setItem("audioFolder", path);
+}
+
+function loadAudioFolder() {
+  const saved = localStorage.getItem("audioFolder");
+  if (saved) {
+    setState({ audioFolder: saved });
+    state.config.audioDirectory = saved;
+  }
 }
 
 async function chooseAudioFolder() {
   const config = await window.meetingApp.chooseAudioFolder();
   if (config) {
     state.config = config;
+    setAudioFolder(config.audioDirectory);
     render();
   }
 }
@@ -334,6 +364,7 @@ async function uploadExistingAudio() {
   state.currentMeeting = imported[0];
   state.meetings = [imported[0], ...state.meetings];
   elements.processBtn.disabled = false;
+  setState({ audioFolder: state.config.audioDirectory });
   setStatus("Audio Imported");
   renderMeetings();
 }
@@ -535,6 +566,7 @@ function blobToBase64(blob) {
 async function processMeeting() {
   if (!state.currentMeeting) return;
   elements.processBtn.disabled = true;
+  setState({ processing: true });
 
   // Check if the selected model needs Ollama and if it's ready
   const selectedModel = state.config.model || "";
@@ -610,6 +642,7 @@ async function processMeeting() {
     setStatus("Error Processing");
   } finally {
     elements.processBtn.disabled = false;
+    setState({ processing: false });
     const appState = await window.meetingApp.getState();
     state.meetings = appState.meetings || [];
     renderMeetings();
@@ -767,8 +800,10 @@ function setAudioStatus(element, text, className) {
 }
 
 function render() {
+  const showSetupBanner = !isSetupComplete(state);
+  console.log("SETUP STATE:", { folder: state.config.audioDirectory, ai: state.aiReady, show: showSetupBanner });
   elements.audioFolderLabel.textContent = state.config.audioDirectory || "Not selected";
-  elements.setupWarning.style.display = state.config.audioDirectory ? "none" : "block";
+  elements.setupWarning.style.display = showSetupBanner ? "block" : "none";
   elements.startBtn.disabled = !state.config.audioDirectory;
   elements.uploadBtn.disabled = !state.config.audioDirectory;
   renderMeetings();
@@ -1168,23 +1203,48 @@ function setActiveModule(moduleKey) {
   elements.leadModuleTab.setAttribute("aria-selected", isMeeting ? "false" : "true");
 
   localStorage.setItem("activeModule", isMeeting ? "meeting" : "leads");
+  
+  emit("tab:change", moduleKey);
 }
 
 // ===================================================================
 // Ollama Auto-Setup
 // ===================================================================
 
-async function checkAndSetupOllama() {
-  try {
-    const status = await window.meetingApp.checkOllama();
-    if (status.installed && status.running && status.modelReady) {
-      elements.aiSetupPanel.style.display = "none";
-      return;
-    }
-  } catch {}
+// 🧠 LOCAL AI CHECK FIX (Issue 4)
+async function checkLocalAI() {
+  if (state.config.model === "online") {
+    setState({ aiStatus: "ready", aiReady: true });
+    render();
+    return;
+  }
 
-  elements.aiSetupPanel.style.display = "block";
-  runOllamaSetup();
+  setState({ aiStatus: "checking" });
+  elements.aiSetupPill.textContent = "Checking...";
+  elements.aiSetupPill.className = "pill";
+
+  try {
+    const result = await Promise.race([
+      window.meetingApp.checkOllama(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))
+    ]);
+
+    if (result && result.installed && result.running && result.modelReady) {
+      setState({ aiStatus: "ready", aiReady: true });
+      elements.aiSetupPanel.style.display = "none";
+      render();
+    } else {
+      setState({ aiStatus: "error", aiReady: false });
+      elements.aiSetupPanel.style.display = "block";
+      runOllamaSetup();
+    }
+  } catch (e) {
+    setState({ aiStatus: "error", aiReady: false });
+    elements.aiSetupPill.textContent = "Unavailable";
+    elements.aiSetupPill.className = "pill pill-error";
+    elements.aiSetupDetail.textContent = "Local AI is unavailable or timing out. Using basic draft mode.";
+    render();
+  }
 }
 
 async function runOllamaSetup() {
@@ -1221,6 +1281,8 @@ async function runOllamaSetup() {
       elements.aiSetupPill.className = "pill pill-success";
       elements.aiSetupDetail.textContent = "Ollama and all required AI models are installed. Meeting minutes generation is available.";
       elements.aiProgressBar.style.display = "none";
+      state.aiReady = true;
+      render();
       setTimeout(() => {
         elements.aiSetupPanel.style.display = "none";
       }, 4000);
@@ -1231,6 +1293,8 @@ async function runOllamaSetup() {
       elements.aiSetupDetail.textContent = "Some components could not be verified. Transcription will still work, but meeting-minutes generation may fall back to a basic draft.";
       elements.aiSetupActions.style.display = "flex";
       elements.aiProgressBar.style.display = "none";
+      state.aiReady = false;
+      render();
     }
   } catch (error) {
     elements.aiProgressFill.classList.remove("indeterminate");
@@ -1240,5 +1304,7 @@ async function runOllamaSetup() {
     elements.aiSetupDetail.textContent = `${error.message || "Unknown error."}  You can retry or generate minutes without Ollama (basic draft mode).`;
     elements.aiSetupActions.style.display = "flex";
     elements.aiProgressBar.style.display = "none";
+    state.aiReady = false;
+    render();
   }
 }

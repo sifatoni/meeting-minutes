@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -61,9 +61,8 @@
           <div class="folder-box" style="margin-top: 16px;">
             <span>AI Model</span>
             <select id="modelSelect" style="width: 100%; margin-top: 6px; padding: 6px; border-radius: 4px; border: 1px solid #4a4d52; background: #2f3136; color: white;">
-              <option value="qwen2.5:3b">Local Model</option>
-              <option value="gemini-3-flash-preview">Cloud Model</option>
-              <option value="online" style="display: none;">Online model</option>
+              <option value="qwen2.5:3b">Local (Ollama)</option>
+              <option value="online">Online (OpenRouter)</option>
             </select>
           </div>
           <div class="folder-box" id="apiKeyBox" style="display: none; margin-top: 10px;">
@@ -374,7 +373,7 @@
       </section>
     </main>
 
-    <script src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
 

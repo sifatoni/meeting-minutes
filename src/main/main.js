@@ -158,7 +158,7 @@ app.whenReady().then(async () => {
 // ===================================================================
 
 const PYTHON_MAC_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.3/python-3.13.3-macos11.pkg";
-const REQUIRED_PIP_PACKAGES = ["faster-whisper==1.2.1", "openrouter", "groq"];
+const REQUIRED_PIP_PACKAGES = ["faster-whisper==1.2.1", "groq"];
 
 function isPythonAvailable() {
   try {
@@ -453,7 +453,16 @@ ipcMain.handle("meeting:process", async (_event, meetingId, options = {}) => {
   });
 
   const result = await runPython(scriptPath, input);
-  const output = JSON.parse(result);
+  console.log("[DEBUG] Python raw output:", result.slice(0, 500));
+  let output;
+  try {
+    output = JSON.parse(result);
+  } catch (e) {
+    throw new Error("Invalid response from processing engine — Python may have crashed.");
+  }
+  if (!output || output.status === "error") {
+    throw new Error(output?.message || "Processing failed");
+  }
   const minutes = readJson(output.minutesPath, {});
 
   meeting.status = minutes._transcriptionError ? "Transcription Failed" : "Minutes Ready";
@@ -853,11 +862,12 @@ function runPython(scriptPath, input) {
       if (stderr) {
         console.log("[Python stderr]", stderr);
       }
-      if (code !== 0) {
-        reject(new Error(stderr || `Python worker exited with code ${code}`));
+      const out = stdout.trim();
+      if (!out) {
+        reject(new Error(stderr || `Python returned empty response (exit code ${code})`));
         return;
       }
-      resolve(stdout.trim());
+      resolve(out);
     });
 
     child.stdin.write(input);
@@ -873,14 +883,14 @@ const OLLAMA_API = "http://127.0.0.1:11434";
 const OLLAMA_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe";
 
 // All local models that the program supports â€” all must be available
-const REQUIRED_OLLAMA_MODELS = ["qwen2.5:3b", "gemini-3-flash-preview"];
+const REQUIRED_OLLAMA_MODELS = ["qwen2.5:3b"];
 
 function getOllamaModel() {
   const config = readJson(getConfigPath(), {});
   if (config.model && config.model !== "online") {
     return config.model;
   }
-  return process.env.MEETING_OLLAMA_MODEL || "gemini-3-flash-preview";
+  return process.env.MEETING_OLLAMA_MODEL || "qwen2.5:3b";
 }
 
 function findOllamaPath() {
@@ -1034,7 +1044,15 @@ async function waitForApi(seconds) {
   return false;
 }
 
-ipcMain.handle("ollama:check", () => ollamaStatus());
+ipcMain.handle("ollama:check", () =>
+  Promise.race([
+    ollamaStatus(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 4000))
+  ]).catch(() => ({
+    installed: false, running: false, modelReady: false,
+    ollamaPath: null, installedModels: [], missingModels: []
+  }))
+);
 
 ipcMain.handle("ollama:setup", async () => {
   let st = await ollamaStatus();
