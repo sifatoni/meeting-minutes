@@ -9,6 +9,9 @@ if hasattr(sys.stderr, "reconfigure"):
 
 import json
 import os
+
+# Propagate UTF-8 to any child processes (Whisper, etc.)
+os.environ["PYTHONIOENCODING"] = "utf-8"
 import re
 import shutil
 import time
@@ -764,6 +767,8 @@ def generate_minutes_with_openrouter(meeting, date_text, transcript, config, pro
         sys.stderr.write(f"[OPENROUTER] Unexpected response shape: {e}\n")
         return None
 
+    # Sanitize before any further processing — surrogates crash json.loads
+    raw_response = clean_text(raw_response)
     sys.stderr.write(f"[OPENROUTER] Response length: {len(raw_response)} chars\n")
 
     # Strip <think> blocks (some models emit them)
@@ -782,8 +787,8 @@ def generate_minutes_with_openrouter(meeting, date_text, transcript, config, pro
     try:
         minutes = json.loads(raw_response)
     except json.JSONDecodeError as e:
-        sys.stderr.write(f"[OPENROUTER] JSON decode failed: {e}\n")
-        return None
+        sys.stderr.write(f"[OPENROUTER] JSON decode failed: {e} — using raw text as summary\n")
+        minutes = {"discussionSummary": raw_response[:1000], "keyPoints": [], "actionItems": []}
 
     return normalize_llm_minutes(minutes, meeting, date_text, transcript)
 
@@ -839,7 +844,7 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
             method="POST"
         )
         with urllib.request.urlopen(request, timeout=600) as response:
-            result = json.loads(response.read().decode("utf-8"))
+            result = json.loads(response.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
         sys.stderr.write(f"[DEBUG] Ollama network/parse error: {e}\n")
         return None
@@ -849,6 +854,8 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
     if msg:
         raw_response = msg.get("content", "").strip()
 
+    # Sanitize before any further processing — surrogates crash json.loads
+    raw_response = clean_text(raw_response)
     sys.stderr.write(f"[DEBUG] Ollama raw_response length = {len(raw_response)}\n")
     sys.stderr.write(f"[DEBUG] Ollama raw_response first 500 chars: {raw_response[:500]}\n")
 
@@ -856,7 +863,6 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
         sys.stderr.write("[DEBUG] Ollama returned EMPTY response\n")
         return None
 
-    import re
     # Strip <think>...</think> blocks just in case
     raw_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
 
@@ -874,9 +880,8 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
     try:
         minutes = json.loads(raw_response)
     except json.JSONDecodeError as e:
-        sys.stderr.write(f"[DEBUG] JSON decode error: {e}\n")
-        sys.stderr.write(f"[DEBUG] Attempted to parse: {raw_response[:500]}\n")
-        return None
+        sys.stderr.write(f"[DEBUG] JSON decode error: {e} — using raw text as summary\n")
+        minutes = {"discussionSummary": raw_response[:1000], "keyPoints": [], "actionItems": []}
 
     return normalize_llm_minutes(minutes, meeting, date_text, transcript)
 
