@@ -4,7 +4,7 @@ import { emit, on } from "./eventBus.js";
 const state = getState();
 
 function isSetupComplete(s) {
-  return Boolean(s.config.audioDirectory && s.aiReady === true);
+  return Boolean(s.config.audioDirectory || s.audioFolder);
 }
 
 const elements = {

@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 
 # Force UTF-8 on Windows (default is cp1252, crashes on Bengali/surrogate text).
 # Must come before any other import that could trigger I/O.
@@ -12,6 +12,7 @@ import os
 
 # Propagate UTF-8 to any child processes (Whisper, etc.)
 os.environ["PYTHONIOENCODING"] = "utf-8"
+import random
 import re
 import shutil
 import time
@@ -27,12 +28,12 @@ FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
 
 DEFAULT_WHISPER_MODEL = os.environ.get("MEETING_WHISPER_MODEL", "medium")
 DEFAULT_OLLAMA_MODEL = os.environ.get("MEETING_OLLAMA_MODEL", "qwen2.5:3b")
-CLOUD_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
+CLOUD_MODEL = "google/gemma-3-4b-it:free"
 OLLAMA_GENERATE_URL = os.environ.get("MEETING_OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 
 GROQ_MAX_BYTES = 25 * 1024 * 1024  # Groq's hard per-request file-size limit
 
-# Strings that indicate an error ended up in the transcript — hard-block before LLM
+# Strings that indicate an error ended up in the transcript - hard-block before LLM
 _TRANSCRIPT_ERROR_PATTERNS = [
     "groq api error",
     "request entity too large",
@@ -83,7 +84,7 @@ def is_bad(text):
 
 def load_audio_safe(file_path):
     if not FFMPEG_AVAILABLE:
-        sys.stderr.write("[ERROR] ffmpeg not found — cannot process audio\n")
+        sys.stderr.write("[ERROR] ffmpeg not found - cannot process audio\n")
         return None
     try:
         from pydub import AudioSegment
@@ -124,13 +125,52 @@ def split_audio(file_path, chunk_ms=120000):
     return split_audio_safe(audio, file_path, chunk_ms)
 
 
+def safe_text(text):
+    if not isinstance(text, str):
+        return ""
+    return (
+        text.encode("utf-8", "ignore")
+        .decode("utf-8", "ignore")
+        .replace("\udc8d", "")
+        .replace("\x00", "")
+    )
+
+
+# Alias used in new code paths per spec
+sanitize_text = safe_text
+
+
+def deep_sanitize(obj):
+    """Recursively sanitize all strings in any JSON-like structure."""
+    if isinstance(obj, dict):
+        return {k: deep_sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [deep_sanitize(i) for i in obj]
+    if isinstance(obj, str):
+        return sanitize_text(obj)
+    return obj
+
+
 def _safe_str(value):
     """Strip surrogate chars that crash json.dumps, replacing them with '?'."""
     return str(value).encode("utf-8", "replace").decode("utf-8")
 
 
+def safe_json_dumps(obj, **kwargs):
+    """Recursively sanitize all strings then JSON-serialize - never crashes on surrogates."""
+    def _clean(v):
+        if isinstance(v, str):
+            return safe_text(v)
+        if isinstance(v, dict):
+            return {k: _clean(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [_clean(item) for item in v]
+        return v
+    return json.dumps(_clean(obj), ensure_ascii=False, **kwargs)
+
+
 def safe_json_print(obj):
-    """Recursively sanitize strings in obj then print as JSON to stdout."""
+    """Recursively sanitize strings in obj then write JSON to stdout.buffer (bypasses TextIOWrapper encoding path)."""
     def _sanitize(v):
         if isinstance(v, str):
             return _safe_str(v)
@@ -139,7 +179,9 @@ def safe_json_print(obj):
         if isinstance(v, list):
             return [_sanitize(item) for item in v]
         return v
-    print(json.dumps(_sanitize(obj)))
+    out = json.dumps(_sanitize(obj), ensure_ascii=False)
+    sys.stdout.buffer.write(out.encode("utf-8", "ignore") + b"\n")
+    sys.stdout.buffer.flush()
 
 
 def fail_response(reason):
@@ -240,7 +282,7 @@ def _run():
         return
 
     if not FFMPEG_AVAILABLE:
-        sys.stderr.write("[WARN] ffmpeg not found in PATH — audio chunking and format conversion unavailable\n")
+        sys.stderr.write("[WARN] ffmpeg not found in PATH - audio chunking and format conversion unavailable\n")
 
     transcript_result = transcribe_meeting_audio(meeting, config)
 
@@ -249,9 +291,9 @@ def _run():
         sys.stderr.write(
             f"[ERROR] Transcription failed ({transcript_result.get('type', '?')}): {err_msg}\n"
         )
-        transcript_path.write_text(f"[TRANSCRIPTION ERROR]\n{err_msg}", encoding="utf-8")
+        transcript_path.write_text(safe_text(f"[TRANSCRIPTION ERROR]\n{err_msg}"), encoding="utf-8", errors="ignore")
         minutes = build_error_minutes(meeting, err_msg)
-        minutes_path.write_text(json.dumps(minutes, indent=2), encoding="utf-8")
+        minutes_path.write_text(safe_json_dumps(minutes, indent=2), encoding="utf-8", errors="ignore")
         write_docx(docx_path, minutes)
         safe_json_print(_paths())
         return
@@ -259,17 +301,18 @@ def _run():
     transcript_text = transcript_result["text"]
 
     if is_transcript_bad(transcript_text):
-        sys.stderr.write("[GUARD] Transcript failed quality check — blocking before LLM\n")
+        sys.stderr.write("[GUARD] Transcript failed quality check - blocking before LLM\n")
         minutes = build_error_minutes(meeting, "Transcription corrupted or audio too poor to process.")
-        transcript_path.write_text(transcript_text or "[empty]", encoding="utf-8")
-        minutes_path.write_text(json.dumps(minutes, indent=2), encoding="utf-8")
+        transcript_path.write_text(safe_text(transcript_text or "[empty]"), encoding="utf-8", errors="ignore")
+        minutes_path.write_text(safe_json_dumps(minutes, indent=2), encoding="utf-8", errors="ignore")
         write_docx(docx_path, minutes)
         safe_json_print(_paths())
         return
 
-    transcript_path.write_text(transcript_text, encoding="utf-8")
+    transcript_text = safe_text(transcript_text)
+    transcript_path.write_text(transcript_text, encoding="utf-8", errors="ignore")
     minutes = build_minutes_from_transcript(meeting, transcript_text, config)
-    minutes_path.write_text(json.dumps(minutes, indent=2), encoding="utf-8")
+    minutes_path.write_text(safe_json_dumps(minutes, indent=2), encoding="utf-8", errors="ignore")
     write_docx(docx_path, minutes)
 
     safe_json_print(_paths())
@@ -302,12 +345,12 @@ def transcribe_meeting_audio(meeting, config):
         if audio_obj is not None and len(audio_obj) > 300000:  # 5 minutes
             needs_chunking = True
     else:
-        sys.stderr.write("[WARN] ffmpeg not found — skipping duration check, will attempt transcription directly\n")
+        sys.stderr.write("[WARN] ffmpeg not found - skipping duration check, will attempt transcription directly\n")
 
     chunks = [str(audio_path)]
     if needs_chunking:
         if not FFMPEG_AVAILABLE:
-            sys.stderr.write("[WARN] ffmpeg not found — skipping chunking, passing full file\n")
+            sys.stderr.write("[WARN] ffmpeg not found - skipping chunking, passing full file\n")
         else:
             sys.stderr.write("[INFO] Large/long file detected, triggering chunking mode\n")
             chunks = split_audio(str(audio_path), chunk_ms=120000)
@@ -551,12 +594,12 @@ def build_error_minutes(meeting, message):
         "client": meeting.get("client", ""),
         "date": created_at.split("T")[0],
         "participants": meeting.get("participants", ""),
-        "meetingObjective": "Transcription failed — minutes could not be generated.",
+        "meetingObjective": "Transcription failed - minutes could not be generated.",
         "discussionSummary": str(message),
         "keyPoints": [],
         "decisions": [],
         "actionItems": [],
-        "risks": ["Transcription failed — meeting minutes cannot be generated from this recording."],
+        "risks": ["Transcription failed - meeting minutes cannot be generated from this recording."],
         "nextSteps": [
             "Check your Groq API key and audio file size (Groq max: 25 MB).",
             "Switch to 'Local (faster-whisper)' transcription in the sidebar.",
@@ -583,7 +626,7 @@ def build_minutes_from_transcript(meeting, transcript_result, config):
     transcript_lower = (transcript or "").lower()
     for pattern in _TRANSCRIPT_ERROR_PATTERNS:
         if pattern in transcript_lower:
-            sys.stderr.write(f"[GUARD] Blocking bad transcript — matched pattern: {pattern!r}\n")
+            sys.stderr.write(f"[GUARD] Blocking bad transcript - matched pattern: {pattern!r}\n")
             return build_error_minutes(meeting, transcript[:500])
 
     created_at = meeting.get("createdAt") or datetime.now().isoformat()
@@ -617,10 +660,10 @@ def build_minutes_from_transcript(meeting, transcript_result, config):
         if is_summary_invalid(llm_minutes.get("discussionSummary", "")):
             return build_error_minutes(meeting, "Could not generate reliable meeting minutes from this audio.")
         if isinstance(transcript_result, dict) and transcript_result.get("_status") == "partial":
-            llm_minutes["_statusMessage"] = transcript_result.get("_message", "Low audio clarity — partial insights generated")
+            llm_minutes["_statusMessage"] = transcript_result.get("_message", "Low audio clarity - partial insights generated")
             sys.stderr.write(f"[INFO] Status Message injected: {llm_minutes['_statusMessage']}\n")
         elif quality.get("bad_chunks", 0) > quality.get("good_chunks", 0):
-            llm_minutes["_statusMessage"] = "Low audio clarity — partial insights generated"
+            llm_minutes["_statusMessage"] = "Low audio clarity - partial insights generated"
             sys.stderr.write("[INFO] Status Message injected: Low audio clarity\n")
         return llm_minutes
 
@@ -629,19 +672,19 @@ def build_minutes_from_transcript(meeting, transcript_result, config):
         "client": meeting.get("client", ""),
         "date": date_text,
         "participants": meeting.get("participants", ""),
-        "meetingObjective": "Could not generate structured minutes — AI model is not available.",
+        "meetingObjective": "Could not generate structured minutes - AI model is not available.",
         "discussionSummary": (
             "The audio was transcribed successfully, but the AI model (Ollama) is not running on this computer. "
             "The app needs Ollama to convert the transcript into structured meeting minutes.\n\n"
             "To fix this:\n"
-            "1. Open the app — the AI Setup panel should appear and install Ollama automatically.\n"
+            "1. Open the app - the AI Setup panel should appear and install Ollama automatically.\n"
             "2. Or install Ollama manually from https://ollama.com\n"
             "3. After installing, run: ollama pull " + (config.get("model") or DEFAULT_OLLAMA_MODEL) + "\n"
             "4. Then click Generate Minutes again."
         ),
         "keyPoints": [
             "Audio transcription completed successfully.",
-            "AI model (Ollama) is not installed or running — structured minutes cannot be generated yet."
+            "AI model (Ollama) is not installed or running - structured minutes cannot be generated yet."
         ],
         "decisions": [],
         "actionItems": [
@@ -679,18 +722,18 @@ def generate_minutes(meeting, date_text, transcript, config):
         result = generate_minutes_with_openrouter(meeting, date_text, transcript, config, prompt)
         if result is not None:
             return result
-        sys.stderr.write("[FALLBACK] OpenRouter failed — falling back to local Ollama\n")
+        sys.stderr.write("[FALLBACK] OpenRouter failed - falling back to local Ollama\n")
 
     ollama_result = generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
     if ollama_result is not None:
         return ollama_result
 
-    sys.stderr.write("[FALLBACK] Ollama failed — using simple text extraction fallback\n")
+    sys.stderr.write("[FALLBACK] Ollama failed - using simple text extraction fallback\n")
     return simple_summary_fallback(meeting, date_text, transcript)
 
 
 def simple_summary_fallback(meeting, date_text, transcript):
-    """Last-resort fallback: extract structure directly from transcript text — no AI required."""
+    """Last-resort fallback: extract structure directly from transcript text - no AI required."""
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', transcript) if len(s.strip()) > 20]
     key_points = sentences[:5] if sentences else [transcript[:200]]
 
@@ -699,15 +742,15 @@ def simple_summary_fallback(meeting, date_text, transcript):
         "client": meeting.get("client", ""),
         "date": date_text,
         "participants": meeting.get("participants", ""),
-        "meetingObjective": "Auto-extracted — AI model unavailable.",
-        "discussionSummary": transcript[:500].strip() if transcript else "No transcript available.",
-        "keyPoints": key_points,
+        "meetingObjective": "General discussion",
+        "discussionSummary": "The meeting included multiple discussion points but AI services failed. A fallback summary has been generated.",
+        "keyPoints": key_points if key_points else ["General discussion took place"],
         "decisions": [],
         "actionItems": [],
         "risks": [],
         "nextSteps": ["Review this auto-extracted summary and edit as needed."],
         "transcript": transcript,
-        "_statusMessage": "AI model unavailable — this is an auto-extracted summary only.",
+        "_statusMessage": "AI model unavailable - this is an auto-extracted summary only.",
         "_confidence": 0
     }
 
@@ -721,9 +764,20 @@ def generate_minutes_with_openrouter(meeting, date_text, transcript, config, pro
     payload = json.dumps({
         "model": CLOUD_MODEL,
         "messages": [
-            {"role": "system", "content": "You generate clean professional meeting minutes. Output only valid JSON."},
-            {"role": "user", "content": prompt}
-        ]
+            {
+                "role": "system",
+                "content": (
+                    "You are a professional meeting analyst. "
+                    "Generate structured meeting minutes from the transcript. "
+                    "Rules: Discussion Summary MUST be at least 120 words. "
+                    "Key points MUST have at least 5 items. "
+                    "No empty fields allowed - infer intelligently if unclear. "
+                    "Output ONLY valid JSON, no markdown, no explanation."
+                )
+            },
+            {"role": "user", "content": sanitize_text(prompt)}
+        ],
+        "temperature": 0.3
     }).encode("utf-8")
 
     request = urllib.request.Request(
@@ -737,28 +791,27 @@ def generate_minutes_with_openrouter(meeting, date_text, transcript, config, pro
     )
 
     result = None
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             with urllib.request.urlopen(request, timeout=120) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
             break  # success
         except urllib.error.HTTPError as e:
-            if e.code == 429:
-                wait = 2 * (attempt + 1)
-                sys.stderr.write(f"[OPENROUTER] 429 Rate limited — retry {attempt + 1}/3 in {wait}s\n")
-                time.sleep(wait)
-                continue
-            if e.code == 401:
-                sys.stderr.write("[OPENROUTER] 401 Unauthorized — invalid or expired API key\n")
-            else:
-                sys.stderr.write(f"[OPENROUTER] HTTP {e.code}: {e.reason}\n")
+            if e.code in (400, 401, 402, 429):
+                sys.stderr.write(f"[OPENROUTER] {e.code} - OpenRouter unusable -> fallback instantly\n")
+                return None
+            sys.stderr.write(f"[OPENROUTER] HTTP {e.code}: {e.reason}\n")
             return None
         except (urllib.error.URLError, TimeoutError, OSError) as e:
-            sys.stderr.write(f"[OPENROUTER] Network error: {e}\n")
+            wait = 2 * (attempt + 1) + random.uniform(0, 1)
+            sys.stderr.write(f"[OPENROUTER] Network error (attempt {attempt + 1}/2): {e} - retry in {wait:.1f}s\n")
+            if attempt < 1:
+                time.sleep(wait)
+                continue
             return None
 
     if result is None:
-        sys.stderr.write("[OPENROUTER] Failed after 3 attempts (rate limit)\n")
+        sys.stderr.write("[OPENROUTER] Failed after 2 attempts\n")
         return None
 
     try:
@@ -767,7 +820,7 @@ def generate_minutes_with_openrouter(meeting, date_text, transcript, config, pro
         sys.stderr.write(f"[OPENROUTER] Unexpected response shape: {e}\n")
         return None
 
-    # Sanitize before any further processing — surrogates crash json.loads
+    # Sanitize before any further processing - surrogates crash json.loads
     raw_response = clean_text(raw_response)
     sys.stderr.write(f"[OPENROUTER] Response length: {len(raw_response)} chars\n")
 
@@ -785,12 +838,24 @@ def generate_minutes_with_openrouter(meeting, date_text, transcript, config, pro
             raw_response = json_match.group(0)
 
     try:
-        minutes = json.loads(raw_response)
+        minutes = json.loads(sanitize_text(raw_response))
+        minutes = deep_sanitize(minutes)
     except json.JSONDecodeError as e:
-        sys.stderr.write(f"[OPENROUTER] JSON decode failed: {e} — using raw text as summary\n")
-        minutes = {"discussionSummary": raw_response[:1000], "keyPoints": [], "actionItems": []}
+        sys.stderr.write(f"[OPENROUTER] JSON decode failed: {e} - using raw text as summary\n")
+        minutes = {"discussionSummary": sanitize_text(raw_response[:1000]), "keyPoints": [], "actionItems": []}
 
     return normalize_llm_minutes(minutes, meeting, date_text, transcript)
+
+
+def is_ollama_running():
+    try:
+        urllib.request.urlopen(
+            OLLAMA_GENERATE_URL.replace("/api/generate", ""),
+            timeout=2
+        )
+        return True
+    except Exception:
+        return False
 
 
 def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt):
@@ -801,15 +866,8 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
     sys.stderr.write(f"[DEBUG] Ollama: using model '{model_name}'\n")
     sys.stderr.write(f"[DEBUG] Ollama: transcript length = {len(transcript)} chars\n")
 
-    # First check if Ollama is reachable
-    try:
-        check_req = urllib.request.Request(
-            OLLAMA_GENERATE_URL.replace("/api/generate", ""),
-            method="GET"
-        )
-        urllib.request.urlopen(check_req, timeout=5)
-    except (urllib.error.URLError, OSError) as e:
-        sys.stderr.write(f"[DEBUG] Ollama is not reachable: {e}\n")
+    if not is_ollama_running():
+        sys.stderr.write("[DEBUG] Ollama is not reachable - skipping\n")
         return None
 
     # Use the chat API with /no_think to prevent qwen3.5 thinking mode
@@ -819,7 +877,16 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
         "messages": [
             {
                 "role": "system",
-                "content": "/no_think You are a JSON-only meeting minutes generator. Output ONLY valid JSON, no markdown, no explanation."
+                "content": (
+                    "/no_think You are a professional meeting analyst. "
+                    "Analyze the transcript and generate structured meeting minutes. "
+                    "Rules: "
+                    "- Discussion Summary MUST be at least 120 words. "
+                    "- Key points MUST have at least 5 bullet points. "
+                    "- Do NOT return empty fields. "
+                    "- If data unclear, infer intelligently from context. "
+                    "Output ONLY valid JSON, no markdown, no explanation."
+                )
             },
             {
                 "role": "user",
@@ -854,7 +921,7 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
     if msg:
         raw_response = msg.get("content", "").strip()
 
-    # Sanitize before any further processing — surrogates crash json.loads
+    # Sanitize before any further processing - surrogates crash json.loads
     raw_response = clean_text(raw_response)
     sys.stderr.write(f"[DEBUG] Ollama raw_response length = {len(raw_response)}\n")
     sys.stderr.write(f"[DEBUG] Ollama raw_response first 500 chars: {raw_response[:500]}\n")
@@ -878,10 +945,11 @@ def generate_minutes_with_ollama(meeting, date_text, transcript, config, prompt)
             raw_response = json_match.group(0)
 
     try:
-        minutes = json.loads(raw_response)
+        minutes = json.loads(sanitize_text(raw_response))
+        minutes = deep_sanitize(minutes)
     except json.JSONDecodeError as e:
-        sys.stderr.write(f"[DEBUG] JSON decode error: {e} — using raw text as summary\n")
-        minutes = {"discussionSummary": raw_response[:1000], "keyPoints": [], "actionItems": []}
+        sys.stderr.write(f"[DEBUG] JSON decode error: {e} - using raw text as summary\n")
+        minutes = {"discussionSummary": sanitize_text(raw_response[:1000]), "keyPoints": [], "actionItems": []}
 
     return normalize_llm_minutes(minutes, meeting, date_text, transcript)
 

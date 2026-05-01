@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } = require("electron");
+﻿const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
@@ -72,7 +72,7 @@ function getPythonExecutable() {
     }
   }
 
-  // Fallback â€” will likely fail but gives a clear error
+  // Fallback - will likely fail but gives a clear error
   return process.platform === "win32" ? "python" : "python3";
 }
 
@@ -187,7 +187,7 @@ function arePipDepsInstalled() {
 async function ensurePythonAndDeps() {
   // On Mac, install Python if missing
   if (process.platform === "darwin" && !isPythonAvailable()) {
-    sendSetup("python", "Python not found. Downloading Python installerâ€¦", 0);
+    sendSetup("python", "Python not found. Downloading Python installer...", 0);
     const tmpDir = path.join(app.getPath("temp"), "python-setup");
     ensureDir(tmpDir);
     const installerPath = path.join(tmpDir, "python-3.13.3.pkg");
@@ -219,7 +219,7 @@ async function ensurePythonAndDeps() {
             received += chunk.length;
             if (total > 0) {
               const pct = Math.round((received / total) * 100);
-              sendSetup("python", `Downloading Pythonâ€¦ ${(received / 1048576).toFixed(0)}/${(total / 1048576).toFixed(0)} MB`, pct);
+              sendSetup("python", `Downloading Python... ${(received / 1048576).toFixed(0)}/${(total / 1048576).toFixed(0)} MB`, pct);
             }
           });
           res.pipe(ws);
@@ -230,7 +230,7 @@ async function ensurePythonAndDeps() {
       follow(PYTHON_MAC_INSTALLER_URL, 0);
     });
 
-    sendSetup("python", "Installing Python 3.13â€¦", -1);
+    sendSetup("python", "Installing Python 3.13...", -1);
     await new Promise((resolve, reject) => {
       const child = spawn("sudo", ["installer", "-pkg", installerPath, "-target", "/"], {
         stdio: "ignore"
@@ -247,7 +247,7 @@ async function ensurePythonAndDeps() {
 
   // Install pip dependencies if missing
   if (!arePipDepsInstalled()) {
-    sendSetup("python", "Installing Python dependenciesâ€¦", -1);
+    sendSetup("python", "Installing Python dependencies...", -1);
     const pythonExe = getPythonExecutable();
     await new Promise((resolve, reject) => {
       const args = ["-m", "pip", "install", ...REQUIRED_PIP_PACKAGES];
@@ -458,7 +458,7 @@ ipcMain.handle("meeting:process", async (_event, meetingId, options = {}) => {
   try {
     output = JSON.parse(result);
   } catch (e) {
-    throw new Error("Invalid response from processing engine — Python may have crashed.");
+    throw new Error("Invalid response from processing engine - Python may have crashed.");
   }
   if (!output || output.status === "error") {
     throw new Error(output?.message || "Processing failed");
@@ -697,7 +697,7 @@ ipcMain.handle("leads:search", async (event, payload) => {
 
   (async () => {
     try {
-      sendProgress({ step: "start", message: "Starting lead search — this may take 3–5 minutes...", count: 0 });
+      sendProgress({ step: "start", message: "Starting lead search - this may take 3-5 minutes...", count: 0 });
 
       // ── CAPTCHA notification callback ──
       const sendCaptcha = (data) => {
@@ -839,11 +839,11 @@ function runPython(scriptPath, input) {
     let stderr = "";
 
     child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
+      stdout += chunk.toString("utf8");
     });
 
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
+      stderr += chunk.toString("utf8");
     });
 
     child.on("error", (err) => {
@@ -882,7 +882,7 @@ function runPython(scriptPath, input) {
 const OLLAMA_API = "http://127.0.0.1:11434";
 const OLLAMA_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe";
 
-// All local models that the program supports â€” all must be available
+// All local models that the program supports " all must be available
 const REQUIRED_OLLAMA_MODELS = ["qwen2.5:3b"];
 
 function getOllamaModel() {
@@ -1057,9 +1057,9 @@ ipcMain.handle("ollama:check", () =>
 ipcMain.handle("ollama:setup", async () => {
   let st = await ollamaStatus();
 
-  // Step 1 â€” Install Ollama if not found
+  // Step 1 " Install Ollama if not found
   if (!st.installed) {
-    sendSetup("install", "Downloading Ollama installerâ€¦", 0);
+    sendSetup("install", "Downloading Ollama installer...", 0);
     const tmpDir = path.join(app.getPath("temp"), "ollama-setup");
     ensureDir(tmpDir);
     const installerPath = path.join(tmpDir, "OllamaSetup.exe");
@@ -1068,10 +1068,10 @@ ipcMain.handle("ollama:setup", async () => {
       const pct = Math.round((recv / total) * 100);
       const mb = (recv / 1048576).toFixed(0);
       const totalMb = (total / 1048576).toFixed(0);
-      sendSetup("install", `Downloading Ollamaâ€¦ ${mb} / ${totalMb} MB`, pct);
+      sendSetup("install", `Downloading Ollama... ${mb} / ${totalMb} MB`, pct);
     });
 
-    sendSetup("install", "Running Ollama installerâ€¦", -1);
+    sendSetup("install", "Running Ollama installer...", -1);
     await new Promise((resolve, reject) => {
       const child = spawn(installerPath, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], {
         windowsHide: true
@@ -1084,14 +1084,14 @@ ipcMain.handle("ollama:setup", async () => {
 
     try { fs.unlinkSync(installerPath); } catch {}
 
-    sendSetup("install", "Waiting for Ollama to startâ€¦", -1);
+    sendSetup("install", "Waiting for Ollama to start...", -1);
     await new Promise((r) => setTimeout(r, 5000));
     st = await ollamaStatus();
   }
 
-  // Step 2 â€” Start the Ollama service if installed but not running
+  // Step 2 " Start the Ollama service if installed but not running
   if (st.installed && !st.running) {
-    sendSetup("service", "Starting Ollama serviceâ€¦", -1);
+    sendSetup("service", "Starting Ollama service...", -1);
     if (st.ollamaPath) {
       try {
         const child = spawn(st.ollamaPath, ["serve"], {
@@ -1108,7 +1108,7 @@ ipcMain.handle("ollama:setup", async () => {
     st = await ollamaStatus();
   }
 
-  // Step 3 â€” Pull all missing models
+  // Step 3 " Pull all missing models
   if (st.running && !st.modelReady) {
     const modelsToPull = st.missingModels.length > 0 ? st.missingModels : [...REQUIRED_OLLAMA_MODELS];
     const totalModels = modelsToPull.length;
@@ -1116,15 +1116,15 @@ ipcMain.handle("ollama:setup", async () => {
     for (let i = 0; i < totalModels; i++) {
       const modelToPull = modelsToPull[i];
       const modelLabel = `(${i + 1}/${totalModels}) ${modelToPull}`;
-      sendSetup("model", `Pulling model ${modelLabel}â€¦`, 0);
+      sendSetup("model", `Pulling model ${modelLabel}...`, 0);
 
       await new Promise((resolve, reject) => {
         const exe = st.ollamaPath || "ollama";
         const child = spawn(exe, ["pull", modelToPull], { windowsHide: true });
 
         const onData = (chunk) => {
-          let text = chunk.toString().replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
-          text = text.replace(/â–•.*?â–/g, '').replace(/\s+/g, ' ').trim();
+          let text = chunk.toString("utf8").replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
+          text = text.replace(/[...]/g, '').replace(/\s+/g, ' ').trim();
           if (!text) return;
           const match = text.match(/(\d+)%/);
           sendSetup("model", `${modelLabel}: ${text}`, match ? parseInt(match[1], 10) : -1);
