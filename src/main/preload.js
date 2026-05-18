@@ -50,3 +50,10 @@ contextBridge.exposeInMainWorld("meetingApp", {
     ipcRenderer.on("leads:error", (_event, data) => callback(data));
   }
 });
+
+contextBridge.exposeInMainWorld("license", {
+  validate: (key) => ipcRenderer.invoke("license:validate", key),
+  activate: (key) => ipcRenderer.invoke("license:activate", key),
+  getInfo: () => ipcRenderer.invoke("license:getInfo"),
+  openMainWindow: () => ipcRenderer.invoke("license:openMainWindow")
+});

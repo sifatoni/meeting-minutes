@@ -1,5 +1,5 @@
 {
-  "name": "offline-meeting-minutes",
+  "name": "minotaur",
   "version": "0.1.2",
   "description": "Offline Windows meeting recorder and minutes generator MVP starter.",
   "main": "src/main/main.js",
@@ -12,7 +12,7 @@
   },
   "build": {
     "appId": "com.meetingminutes.app",
-    "productName": "Meeting Minutes",
+    "productName": "Minotaur",
     "directories": {
       "output": "dist"
     },

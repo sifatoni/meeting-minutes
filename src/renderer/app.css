@@ -1,6 +1,5 @@
 /* ============================================================
-   Sokrio Meeting Minutes — Brand Design System
-   Sokrio Technologies Ltd. Brand Guidelines
+   Minotaur — Brand Design System
    Colors: Teal · Blue · Cyan · White · Slate Neutrals
    Spacing: 8px system  |  Corners: 4-8px  |  Font: Inter
    ============================================================ */
@@ -9,7 +8,7 @@
 
 /* --- Design Tokens --- */
 :root {
-  /* Sokrio Brand */
+  /* Minotaur Brand */
   --deep-teal: #0E7C7B;
   --deep-teal-hover: #0A6160;
   --deep-teal-active: #084E4D;
@@ -135,15 +134,12 @@ h1, h2, h3, p { margin: 0; }
   gap: 10px;
 }
 
-.logo-symbol {
-  width: 56px;
-  height: auto;
-  flex-shrink: 0;
-}
-
-.logo-wordmark-svg {
+.minotaur-logo {
   width: 140px;
+  max-width: 140px;
   height: auto;
+  display: block;
+  margin: 0 auto;
 }
 
 .sidebar-tagline {
@@ -1052,7 +1048,7 @@ textarea {
 /* --- Toast notifications --- */
 #toast-container {
   position: fixed;
-  top: 20px;
+  bottom: 20px;
   right: 20px;
   z-index: 9999;
   display: flex;
@@ -1261,4 +1257,385 @@ textarea {
   .button-row button {
     width: 100%;
   }
+}
+
+/* ============================================================
+   License System Styles
+   ============================================================ */
+
+/* --- Full-viewport license screen --- */
+#licenseScreen {
+  position: fixed;
+  inset: 0;
+  background: var(--darker);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeInUp .3s var(--ease) both;
+}
+
+.license-card {
+  background: var(--deep-slate);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 14px;
+  padding: 40px 36px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.license-logo-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.license-logo-symbol {
+  width: 52px;
+  height: auto;
+}
+
+.license-logo-wordmark {
+  width: 130px;
+  height: auto;
+}
+
+.license-app-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  text-align: center;
+  margin-top: -4px;
+}
+
+.license-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .5);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-align: center;
+  margin-top: -8px;
+}
+
+/* --- License form --- */
+.license-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#licenseKeyInput {
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 8px;
+  color: var(--white);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-align: center;
+  padding: 14px 16px;
+  width: 100%;
+  text-transform: uppercase;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+#licenseKeyInput::placeholder {
+  color: rgba(255, 255, 255, .22);
+  letter-spacing: 3px;
+  font-weight: 400;
+}
+
+#licenseKeyInput:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(92, 200, 190, .2);
+}
+
+#licenseActivateBtn {
+  width: 100%;
+  padding: 14px;
+  background: var(--deep-teal);
+  color: var(--white);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: .3px;
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+#licenseActivateBtn:hover:not(:disabled) {
+  background: var(--deep-teal-hover);
+  transform: translateY(-1px);
+}
+
+#licenseActivateBtn:active:not(:disabled) {
+  background: var(--deep-teal-active);
+  transform: translateY(0);
+}
+
+#licenseActivateBtn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.license-error {
+  color: #ff7b72;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.5;
+  display: none;
+}
+
+.license-success {
+  color: var(--cyan);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.5;
+  display: none;
+}
+
+/* --- License warning banner (expiring soon) --- */
+.license-warning-banner {
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  color: #93370D;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- License expired banner (grace period) --- */
+.license-expired-banner {
+  background: var(--danger-bg);
+  border: 1px solid #fda29b;
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- License status badge in sidebar --- */
+.license-status-badge {
+  font-size: 10px;
+  color: rgba(255, 255, 255, .35);
+  text-align: center;
+  line-height: 1.5;
+  padding: 0 4px;
+  display: none;
+}
+
+/* --- License info button in sidebar --- */
+.license-info-btn {
+  display: none;
+  width: calc(100% - 32px);
+  margin: 4px 16px 0;
+  padding: 7px 12px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, .4);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  letter-spacing: .3px;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.license-info-btn:hover {
+  background: rgba(255, 255, 255, .1);
+  border-color: rgba(255, 255, 255, .18);
+  color: rgba(255, 255, 255, .75);
+}
+
+/* --- License info modal overlay --- */
+.license-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn .15s var(--ease) both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* --- License info modal card --- */
+.license-modal-card {
+  background: var(--deep-slate);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 12px;
+  padding: 28px;
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .7);
+  animation: fadeInUp .2s var(--ease) both;
+}
+
+.license-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.license-modal-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: .2px;
+}
+
+.license-modal-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, .4);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 4px;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.license-modal-close:hover {
+  color: var(--white);
+  background: rgba(255, 255, 255, .08);
+}
+
+/* --- License info rows --- */
+.license-modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.license-modal-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.license-modal-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .4);
+}
+
+.license-modal-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.license-status--active  { color: var(--cyan); }
+.license-status--grace   { color: var(--warning); }
+.license-status--expired { color: var(--danger); }
+
+/* --- Divider --- */
+.license-modal-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, .08);
+  margin-bottom: 18px;
+}
+
+/* --- Renewal section --- */
+.license-modal-renew-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .3);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 10px;
+}
+
+.license-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.license-modal-form input {
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 8px;
+  color: var(--white);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-align: center;
+  padding: 12px 14px;
+  text-transform: uppercase;
+  width: 100%;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.license-modal-form input::placeholder {
+  color: rgba(255, 255, 255, .2);
+  letter-spacing: 3px;
+  font-weight: 400;
+}
+
+.license-modal-form input:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(92, 200, 190, .2);
+}
+
+.license-modal-form button {
+  width: 100%;
+  padding: 12px;
+  background: var(--deep-teal);
+  color: var(--white);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+.license-modal-form button:hover:not(:disabled) {
+  background: var(--deep-teal-hover);
+  transform: translateY(-1px);
+}
+
+.license-modal-form button:active:not(:disabled) {
+  background: var(--deep-teal-active);
+  transform: translateY(0);
+}
+
+.license-modal-form button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
 }

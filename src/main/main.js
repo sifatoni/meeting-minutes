@@ -1,11 +1,13 @@
-﻿const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } = require("electron");
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const https = require("https");
 const { spawn, execSync } = require("child_process");
+const licenseManager = require("./licenseManager");
 
 let mainWindow;
+let licenseWindow = null;
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "config.json");
@@ -117,6 +119,22 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
 }
 
+function createLicenseWindow() {
+  licenseWindow = new BrowserWindow({
+    width: 400,
+    height: 500,
+    resizable: false,
+    maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  licenseWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+}
+
 function configureMediaCapture() {
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowedPermissions = new Set(["media", "display-capture"]);
@@ -144,12 +162,16 @@ function configureMediaCapture() {
 
 app.whenReady().then(async () => {
   configureMediaCapture();
-  createWindow();
-  // Ensure Python and pip dependencies are available (especially on Mac)
-  try {
-    await ensurePythonAndDeps();
-  } catch (err) {
-    console.error("[Python setup]", err.message);
+
+  if (licenseManager.isLicenseActive()) {
+    createWindow();
+    try {
+      await ensurePythonAndDeps();
+    } catch (err) {
+      console.error("[Python setup]", err.message);
+    }
+  } else {
+    createLicenseWindow();
   }
 });
 
@@ -273,7 +295,13 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) {
+    if (licenseManager.isLicenseActive()) {
+      createWindow();
+    } else {
+      createLicenseWindow();
+    }
+  }
 });
 
 ipcMain.handle("app:getState", async () => {
@@ -1123,8 +1151,8 @@ ipcMain.handle("ollama:setup", async () => {
         const child = spawn(exe, ["pull", modelToPull], { windowsHide: true });
 
         const onData = (chunk) => {
-          let text = chunk.toString("utf8").replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
-          text = text.replace(/[...]/g, '').replace(/\s+/g, ' ').trim();
+          let text = chunk.toString("utf8").replace(/[][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
+          text = text.replace(/[...]/g, '').replace(/\s+/g, ' ').trim();
           if (!text) return;
           const match = text.match(/(\d+)%/);
           sendSetup("model", `${modelLabel}: ${text}`, match ? parseInt(match[1], 10) : -1);
@@ -1145,4 +1173,38 @@ ipcMain.handle("ollama:setup", async () => {
   }
 
   return ollamaStatus();
+});
+
+// ===================================================================
+// License Management IPC Handlers
+// ===================================================================
+
+ipcMain.handle("license:validate", (_event, key) => {
+  return licenseManager.validateLicense(key);
+});
+
+ipcMain.handle("license:activate", (_event, key) => {
+  licenseManager.saveLicense(key);
+  return licenseManager.validateLicense(key);
+});
+
+ipcMain.handle("license:getInfo", () => {
+  return licenseManager.getLicenseInfo();
+});
+
+ipcMain.handle("license:openMainWindow", async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return { opened: false };
+  }
+  createWindow();
+  if (licenseWindow && !licenseWindow.isDestroyed()) {
+    licenseWindow.close();
+    licenseWindow = null;
+  }
+  try {
+    await ensurePythonAndDeps();
+  } catch (err) {
+    console.error("[Python setup]", err.message);
+  }
+  return { opened: true };
 });

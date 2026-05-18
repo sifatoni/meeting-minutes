@@ -77,7 +77,30 @@ const elements = {
   leadTableBody: document.getElementById("leadTableBody"),
   summaryModeSelect: document.getElementById("summaryModeSelect"),
   meetingModuleTab: document.getElementById("meetingModuleTab"),
-  leadModuleTab: document.getElementById("leadModuleTab")
+  leadModuleTab: document.getElementById("leadModuleTab"),
+
+  // License elements
+  licenseScreen: document.getElementById("licenseScreen"),
+  licenseKeyInput: document.getElementById("licenseKeyInput"),
+  licenseActivateBtn: document.getElementById("licenseActivateBtn"),
+  licenseError: document.getElementById("licenseError"),
+  licenseSuccess: document.getElementById("licenseSuccess"),
+  licenseWarningBanner: document.getElementById("licenseWarningBanner"),
+  licenseExpiredBanner: document.getElementById("licenseExpiredBanner"),
+  licenseStatusBadge: document.getElementById("licenseStatusBadge"),
+  licenseInfoBtn: document.getElementById("licenseInfoBtn"),
+  appShell: document.querySelector("main.app-shell"),
+
+  // License info modal
+  licenseInfoModal: document.getElementById("licenseInfoModal"),
+  licenseModalCloseBtn: document.getElementById("licenseModalCloseBtn"),
+  modalStatusValue: document.getElementById("modalStatusValue"),
+  modalPlanValue: document.getElementById("modalPlanValue"),
+  modalExpiryValue: document.getElementById("modalExpiryValue"),
+  modalDaysValue: document.getElementById("modalDaysValue"),
+  modalLicenseKeyInput: document.getElementById("modalLicenseKeyInput"),
+  modalLicenseActivateBtn: document.getElementById("modalLicenseActivateBtn"),
+  modalLicenseError: document.getElementById("modalLicenseError")
 };
 
 const COUNTRY_FALLBACK_CODES = [
@@ -112,9 +135,17 @@ function showToast(message, type = "info") {
 
   const remove = () => {
     toast.classList.add("toast-out");
-    toast.addEventListener("animationend", () => toast.remove(), { once: true });
+    // Guard animationName so a stale toastIn animationend can't fire this immediately
+    const onEnd = (e) => {
+      if (e.animationName !== "toastOut") return;
+      toast.removeEventListener("animationend", onEnd);
+      toast.remove();
+    };
+    toast.addEventListener("animationend", onEnd);
+    // Fallback: remove after animation duration in case animationend never fires
+    setTimeout(() => toast.remove(), 300);
   };
-  setTimeout(remove, 2800);
+  setTimeout(remove, 3000);
 }
 
 // ─── Clipboard ────────────────────────────────────────────────────────────────
@@ -132,6 +163,243 @@ function copyText(text) {
     return false;
   }
 }
+
+// ─── License ─────────────────────────────────────────────────────────────────
+
+function showLicenseScreen() {
+  if (elements.licenseScreen) elements.licenseScreen.style.display = "flex";
+  if (elements.appShell) elements.appShell.style.display = "none";
+}
+
+function showMainApp(licenseInfo) {
+  if (elements.licenseScreen) elements.licenseScreen.style.display = "none";
+  if (elements.appShell) elements.appShell.style.display = "";
+  if (licenseInfo) setupLicenseBanners(licenseInfo);
+}
+
+function setupLicenseBanners(licenseInfo) {
+  const { daysLeft, planName, expiresAt } = licenseInfo;
+  const expDate = expiresAt ? new Date(expiresAt).toLocaleDateString() : "Unknown";
+
+  if (elements.licenseStatusBadge) {
+    elements.licenseStatusBadge.textContent = `License: ${planName} — Expires ${expDate} (${daysLeft >= 0 ? daysLeft : 0} days left)`;
+    elements.licenseStatusBadge.style.display = "block";
+  }
+
+  if (elements.licenseInfoBtn) {
+    elements.licenseInfoBtn.style.display = "block";
+  }
+
+  // Reset both banners before re-evaluating
+  if (elements.licenseExpiredBanner) elements.licenseExpiredBanner.style.display = "none";
+  if (elements.licenseWarningBanner) elements.licenseWarningBanner.style.display = "none";
+
+  if (daysLeft < 0) {
+    // Grace period: license expired but still within 3-day grace
+    const daysAgo = Math.abs(daysLeft);
+    const daysUntilLock = daysLeft + 4;
+    if (elements.licenseExpiredBanner) {
+      elements.licenseExpiredBanner.textContent =
+        `🔴 License expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago. ` +
+        `${daysUntilLock} day${daysUntilLock === 1 ? "" : "s"} until app locks.`;
+      elements.licenseExpiredBanner.style.display = "flex";
+    }
+  } else if (daysLeft <= 7) {
+    // Expiring soon
+    const msg = daysLeft === 0
+      ? "⚠️ License expires today. Please renew to avoid interruption."
+      : `⚠️ License expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`;
+    if (elements.licenseWarningBanner) {
+      elements.licenseWarningBanner.textContent = msg;
+      elements.licenseWarningBanner.style.display = "flex";
+    }
+  }
+}
+
+function formatLicenseKey(event) {
+  const raw = event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
+  const parts = [];
+  for (let i = 0; i < raw.length; i += 4) {
+    parts.push(raw.slice(i, i + 4));
+  }
+  event.target.value = parts.join("-");
+  const len = event.target.value.length;
+  event.target.setSelectionRange(len, len);
+}
+
+async function activateLicense() {
+  const key = (elements.licenseKeyInput?.value || "").trim();
+  if (!key) {
+    if (elements.licenseError) {
+      elements.licenseError.textContent = "Please enter a license key.";
+      elements.licenseError.style.display = "block";
+    }
+    if (elements.licenseSuccess) elements.licenseSuccess.style.display = "none";
+    return;
+  }
+
+  if (elements.licenseActivateBtn) {
+    elements.licenseActivateBtn.disabled = true;
+    elements.licenseActivateBtn.textContent = "Activating...";
+  }
+  if (elements.licenseError) elements.licenseError.style.display = "none";
+  if (elements.licenseSuccess) elements.licenseSuccess.style.display = "none";
+
+  try {
+    const result = await window.license.activate(key);
+
+    if (result.valid) {
+      const expDate = new Date(result.expiresAt).toLocaleDateString();
+      if (elements.licenseSuccess) {
+        elements.licenseSuccess.textContent = `✓ License activated! ${result.planName} plan — Expires ${expDate}`;
+        elements.licenseSuccess.style.display = "block";
+      }
+
+      setTimeout(async () => {
+        const openResult = await window.license.openMainWindow();
+        if (!openResult.opened) {
+          // We're already in the main window — just swap the screens and init
+          showMainApp(result);
+          await initMainContent();
+        }
+        // If opened === true, main.js has already created the main window and
+        // will close this license window, so no further action needed here.
+      }, 1500);
+    } else {
+      if (elements.licenseError) {
+        elements.licenseError.textContent = result.error || "Invalid license key.";
+        elements.licenseError.style.display = "block";
+      }
+      if (elements.licenseActivateBtn) {
+        elements.licenseActivateBtn.disabled = false;
+        elements.licenseActivateBtn.textContent = "Activate License";
+      }
+    }
+  } catch {
+    if (elements.licenseError) {
+      elements.licenseError.textContent = "Activation failed. Please try again.";
+      elements.licenseError.style.display = "block";
+    }
+    if (elements.licenseActivateBtn) {
+      elements.licenseActivateBtn.disabled = false;
+      elements.licenseActivateBtn.textContent = "Activate License";
+    }
+  }
+}
+
+// ─── License Info Modal ───────────────────────────────────────────────────────
+
+async function openLicenseModal() {
+  const info = window.license ? await window.license.getInfo() : null;
+
+  let statusText = "Not Activated";
+  let statusClass = "";
+
+  if (info) {
+    if (info.valid && info.daysLeft >= 0) {
+      statusText = "Active";
+      statusClass = "license-status--active";
+    } else if (info.valid && info.daysLeft < 0) {
+      statusText = "Grace Period";
+      statusClass = "license-status--grace";
+    } else {
+      statusText = "Expired";
+      statusClass = "license-status--expired";
+    }
+  }
+
+  if (elements.modalStatusValue) {
+    elements.modalStatusValue.textContent = statusText;
+    elements.modalStatusValue.className = `license-modal-value ${statusClass}`;
+  }
+
+  if (elements.modalPlanValue) {
+    elements.modalPlanValue.textContent = info?.planName || "—";
+  }
+
+  if (elements.modalExpiryValue) {
+    if (info?.expiresAt) {
+      const d = new Date(info.expiresAt);
+      elements.modalExpiryValue.textContent = d.toLocaleDateString("en-GB", {
+        day: "2-digit", month: "short", year: "numeric"
+      });
+    } else {
+      elements.modalExpiryValue.textContent = "—";
+    }
+  }
+
+  if (elements.modalDaysValue) {
+    if (info && typeof info.daysLeft === "number") {
+      elements.modalDaysValue.textContent = info.daysLeft >= 0
+        ? String(info.daysLeft)
+        : `${Math.abs(info.daysLeft)} (expired)`;
+    } else {
+      elements.modalDaysValue.textContent = "—";
+    }
+  }
+
+  if (elements.modalLicenseError) elements.modalLicenseError.style.display = "none";
+  if (elements.modalLicenseKeyInput) elements.modalLicenseKeyInput.value = "";
+  if (elements.modalLicenseActivateBtn) {
+    elements.modalLicenseActivateBtn.disabled = false;
+    elements.modalLicenseActivateBtn.textContent = "Activate";
+  }
+
+  if (elements.licenseInfoModal) elements.licenseInfoModal.style.display = "flex";
+}
+
+function closeLicenseModal() {
+  if (elements.licenseInfoModal) elements.licenseInfoModal.style.display = "none";
+}
+
+async function activateLicenseFromModal() {
+  const key = (elements.modalLicenseKeyInput?.value || "").trim();
+  if (!key) {
+    if (elements.modalLicenseError) {
+      elements.modalLicenseError.textContent = "Please enter a license key.";
+      elements.modalLicenseError.style.display = "block";
+    }
+    return;
+  }
+
+  if (elements.modalLicenseActivateBtn) {
+    elements.modalLicenseActivateBtn.disabled = true;
+    elements.modalLicenseActivateBtn.textContent = "Activating...";
+  }
+  if (elements.modalLicenseError) elements.modalLicenseError.style.display = "none";
+
+  try {
+    const result = await window.license.activate(key);
+    if (result.valid) {
+      setupLicenseBanners(result);
+      closeLicenseModal();
+      if (elements.modalLicenseKeyInput) elements.modalLicenseKeyInput.value = "";
+      // Defer to next event loop tick so the modal's display:none paint flushes
+      // before the toast's toastIn animation starts — prevents animation suppression
+      setTimeout(() => showToast("✅ License activated successfully", "success"), 0);
+    } else {
+      if (elements.modalLicenseError) {
+        elements.modalLicenseError.textContent = result.error || "Invalid license key.";
+        elements.modalLicenseError.style.display = "block";
+      }
+      if (elements.modalLicenseActivateBtn) {
+        elements.modalLicenseActivateBtn.disabled = false;
+        elements.modalLicenseActivateBtn.textContent = "Activate";
+      }
+    }
+  } catch {
+    if (elements.modalLicenseError) {
+      elements.modalLicenseError.textContent = "Activation failed. Please try again.";
+      elements.modalLicenseError.style.display = "block";
+    }
+    if (elements.modalLicenseActivateBtn) {
+      elements.modalLicenseActivateBtn.disabled = false;
+      elements.modalLicenseActivateBtn.textContent = "Activate";
+    }
+  }
+}
+
+// ─── DOMContentLoaded / Init ─────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", init);
 
@@ -151,6 +419,20 @@ elements.leadClearBtn.addEventListener("click", clearLeads);
 elements.meetingModuleTab.addEventListener("click", () => setActiveModule("meeting"));
 elements.leadModuleTab.addEventListener("click", () => setActiveModule("leads"));
 elements.leadTableBody.addEventListener("click", onLeadTableClick);
+
+// License key auto-format and activation (initial screen)
+elements.licenseKeyInput.addEventListener("input", formatLicenseKey);
+elements.licenseActivateBtn.addEventListener("click", activateLicense);
+
+// License info button and modal
+elements.licenseInfoBtn.addEventListener("click", openLicenseModal);
+elements.licenseModalCloseBtn.addEventListener("click", closeLicenseModal);
+elements.licenseInfoModal.addEventListener("click", (e) => {
+  if (e.target === elements.licenseInfoModal) closeLicenseModal();
+});
+elements.modalLicenseKeyInput.addEventListener("input", formatLicenseKey);
+elements.modalLicenseActivateBtn.addEventListener("click", activateLicenseFromModal);
+
 elements.leadFilterAnyInput.addEventListener("change", () => {
   state.leadFilterAny = elements.leadFilterAnyInput.checked;
   // Unchecking "any" must also uncheck the stricter "both"
@@ -243,13 +525,24 @@ elements.groqApiKeyEditLink.addEventListener("click", () => {
 });
 
 async function init() {
+  // License check — must happen before any main-app initialization
+  const licenseInfo = window.license ? await window.license.getInfo() : null;
+  if (!licenseInfo || !licenseInfo.valid) {
+    showLicenseScreen();
+    return;
+  }
+  showMainApp(licenseInfo);
+  await initMainContent();
+}
+
+async function initMainContent() {
   const appState = await window.meetingApp.getState();
   const leadState = await window.meetingApp.getLeadsState();
   state.config = appState.config || {};
   state.meetings = appState.meetings || [];
   state.leads = leadState.leads || [];
   state.leadSearches = leadState.searches || [];
-  
+
   if (state.config.model) {
     elements.modelSelect.value = state.config.model;
   } else {
@@ -439,7 +732,7 @@ async function startRecording() {
 function toggleMic() {
   if (!state.micStream) return;
   state.micPaused = !state.micPaused;
-  
+
   state.micStream.getAudioTracks().forEach(track => {
     track.enabled = !state.micPaused;
   });
@@ -626,7 +919,7 @@ async function processMeeting() {
         } else {
           showToast(`Low confidence (${conf}%)`, "error");
         }
-        
+
         if (result.minutes._statusMessage) {
           setTimeout(() => showToast(result.minutes._statusMessage, "warning"), 3000);
         }
@@ -1203,7 +1496,7 @@ function setActiveModule(moduleKey) {
   elements.leadModuleTab.setAttribute("aria-selected", isMeeting ? "false" : "true");
 
   localStorage.setItem("activeModule", isMeeting ? "meeting" : "leads");
-  
+
   emit("tab:change", moduleKey);
 }
 
