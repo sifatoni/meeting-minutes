@@ -552,10 +552,15 @@ function escapeCsv(value) {
 }
 
 let scrapeGoogleSearch, scrapeGoogleMaps, scoreAndClean, scoreLead;
+let scrapeBing, scrapeYellowPages, scrapeFacebookGroups, enrichLinkedInProfiles;
 try {
   ({ scrapeGoogleSearch } = require("./scrapers/googleSearchScraper"));
   ({ scrapeGoogleMaps } = require("./scrapers/mapsScraper"));
   ({ scoreAndClean, scoreLead } = require("./scrapers/leadCleaner"));
+  ({ scrapeBing } = require("./scrapers/bingSearchScraper"));
+  ({ scrapeYellowPages } = require("./scrapers/yellowPagesScraper"));
+  ({ scrapeFacebookGroups } = require("./scrapers/facebookGroupScraper"));
+  ({ enrichLinkedInProfiles } = require("./scrapers/linkedinProfileScraper"));
 } catch (err) {
   console.error("[Lead Intelligence] Scraper modules failed to load:", err.message);
 }
@@ -760,6 +765,90 @@ ipcMain.handle("leads:search", async (event, payload) => {
       if (signal.cancelled) {
         sendProgress({ step: "cancelled", message: "Search cancelled.", count: leadMap.size });
         return;
+      }
+
+      // ── Method 3: Bing fallback ──
+      if (leadMap.size < 10 && scrapeBing) {
+        sendProgress({ step: "method3-start", message: "[Method 3] Bing fallback search starting...", count: leadMap.size });
+        try {
+          await scrapeBing(input, sendProgress, signal, sendChunk);
+          sendProgress({ step: "method3-done", message: `[Method 3] Done`, count: leadMap.size });
+        } catch (err) {
+          sendProgress({ step: "method3-error", message: `[Method 3] Error: ${err.message}`, count: leadMap.size });
+        }
+        if (signal.cancelled) {
+          sendProgress({ step: "cancelled", message: "Search cancelled.", count: leadMap.size });
+          return;
+        }
+      }
+
+      // ── Method 4: Yellow Pages BD ──
+      if (scrapeYellowPages) {
+        sendProgress({ step: "method4-start", message: "[Method 4] Yellow Pages BD search starting...", count: leadMap.size });
+        try {
+          await scrapeYellowPages(input, sendProgress, signal, sendChunk);
+          sendProgress({ step: "method4-done", message: `[Method 4] Done`, count: leadMap.size });
+        } catch (err) {
+          sendProgress({ step: "method4-error", message: `[Method 4] Error: ${err.message}`, count: leadMap.size });
+        }
+        if (signal.cancelled) {
+          sendProgress({ step: "cancelled", message: "Search cancelled.", count: leadMap.size });
+          return;
+        }
+      }
+
+      // ── Method 5: Facebook Groups ──
+      if (scrapeFacebookGroups) {
+        sendProgress({ step: "method5-start", message: "[Method 5] Facebook Groups search starting...", count: leadMap.size });
+        try {
+          await scrapeFacebookGroups(input, sendProgress, signal, sendChunk);
+          sendProgress({ step: "method5-done", message: `[Method 5] Done`, count: leadMap.size });
+        } catch (err) {
+          sendProgress({ step: "method5-error", message: `[Method 5] Error: ${err.message}`, count: leadMap.size });
+        }
+        if (signal.cancelled) {
+          sendProgress({ step: "cancelled", message: "Search cancelled.", count: leadMap.size });
+          return;
+        }
+      }
+
+      // ── Method 6: LinkedIn Profile Deep Scraper ──
+      if (enrichLinkedInProfiles) {
+        const profilesToEnrich = [];
+        for (const lead of leadMap.values()) {
+           if (lead.linkedinUrl && (!lead.email || !lead.phone)) {
+              profilesToEnrich.push(lead.linkedinUrl);
+           }
+        }
+        
+        if (profilesToEnrich.length > 0) {
+          sendProgress({ step: "method6-start", message: `[Method 6] LinkedIn profile enrichment starting... (${profilesToEnrich.length} profiles)`, count: leadMap.size });
+          try {
+            const enrichedData = await enrichLinkedInProfiles(profilesToEnrich, sendProgress, signal);
+            
+            for (const enriched of enrichedData) {
+               for (const [key, lead] of leadMap.entries()) {
+                  if (lead.linkedinUrl === enriched.url) {
+                     let updated = false;
+                     if (enriched.email && !lead.email) { lead.email = enriched.email; updated = true; }
+                     if (enriched.phone && !lead.phone) { lead.phone = enriched.phone; updated = true; }
+                     if (enriched.name && lead.name === "Unknown") { lead.name = enriched.name; updated = true; }
+                     
+                     if (updated) {
+                         sendChunk([lead], { source: "linkedin-enrichment" });
+                     }
+                  }
+               }
+            }
+            sendProgress({ step: "method6-done", message: `[Method 6] Done — enriched ${enrichedData.length} profiles`, count: leadMap.size });
+          } catch (err) {
+            sendProgress({ step: "method6-error", message: `[Method 6] Error: ${err.message}`, count: leadMap.size });
+          }
+          if (signal.cancelled) {
+            sendProgress({ step: "cancelled", message: "Search cancelled.", count: leadMap.size });
+            return;
+          }
+        }
       }
 
       // ── Final persist + summary ──

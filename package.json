@@ -6,12 +6,14 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js",
+    "dist": "electron-builder --win",
+    "pack": "electron-builder --dir",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:all": "electron-builder --win --mac"
   },
   "build": {
-    "appId": "com.meetingminutes.app",
+    "appId": "com.minotaur.app",
     "productName": "Minotaur",
     "directories": {
       "output": "dist"
@@ -22,20 +24,27 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/mic.png"
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
       "include": "build/installer.nsh"
     },
     "asar": false,
     "files": [
-      "**/*",
+      "src/**/*",
+      "scripts/**/*",
+      "assets/**/*",
+      "package.json",
       "!.venv/**",
       "!.tmp/**",
       "!dist/**",
-      "!docs/**"
+      "!docs/**",
+      "!chrome-profile/**",
+      "!meeting-minutes.zip"
     ]
   },
   "keywords": [
